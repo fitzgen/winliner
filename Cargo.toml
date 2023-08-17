@@ -1,0 +1,32 @@
+[package]
+authors = ["Nick Fitzgerald <fitzgen@gmail.com>"]
+categories = ["command-line-utilities", "development-tools", "wasm"]
+description = "The WebAssembly Indirect Call Inliner"
+documentation = "https://docs.rs/winliner"
+edition = "2021"
+exclude = ["**.wasm"]
+homepage = "https://github.com/fitzgen/winliner"
+license = "Apache-2.0 WITH LLVM-exception"
+name = "winliner"
+readme = "./README.md"
+repository = "https://github.com/fitzgen/winliner"
+version = "0.1.0"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[[bin]]
+name = "winliner"
+required-features = ["env_logger", "clap"]
+
+[dependencies]
+anyhow = "1.0.75"
+clap = { version = "4.3.22", features = ["derive"], optional = true }
+env_logger = { version = "0.10.0", optional = true }
+log = "0.4.20"
+wasm-encoder = "0.31.1"
+wasmparser = "0.110.0"
+
+[workspace]
+members = [
+  "fuzz",
+]

@@ -6,8 +6,8 @@
   </p>
 
   <p>
-    <a href="https://github.com/fitzgen/winliner/actions?query=workflow%3ACI"><img src="https://github.com/bytecodealliance/wizer/workflows/CI/badge.svg" alt="build status" /></a>
-    <a href="https://docs.rs/wizer"><img src="https://docs.rs/wizer/badge.svg" alt="Documentation Status" /></a>
+    <a href="https://github.com/fitzgen/winliner/actions?query=workflow%3ACI"><img src="https://github.com/fitzgen/winliner/workflows/CI/badge.svg" alt="build status" /></a>
+    <a href="https://docs.rs/winliner"><img src="https://docs.rs/winliner/badge.svg" alt="Documentation Status" /></a>
   </p>
 
   <h3>

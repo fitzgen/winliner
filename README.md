@@ -27,7 +27,7 @@
 
 Winliner speculatively inlines indirect calls in WebAssembly, based on observed
 information from a previous profiling phase. This is a form of [profile-guided
-optimization] that we affectionately call *Winlining*.
+optimization] that we affectionately call *winlining*.
 
 [profile-guided optimization]: https://en.wikipedia.org/wiki/Profile-guided_optimization
 

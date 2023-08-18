@@ -2,5 +2,12 @@
 
 #![deny(missing_docs)]
 
-/// Winliner is an indirect call inliner for WebAssembly.
-pub struct Winliner {}
+mod convert;
+mod instrument;
+mod optimize;
+mod profile;
+
+pub use instrument::{InstrumentationStrategy, Instrumenter};
+pub use optimize::Optimizer;
+pub use profile::{Profile, ProfileBuilder};
+pub use wasmtime;

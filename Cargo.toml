@@ -36,6 +36,3 @@ wat = "1.0.69"
 members = [
   "fuzz",
 ]
-
-[patch.crates-io]
-wasm-encoder = { path = "../wasm-tools/crates/wasm-encoder" }

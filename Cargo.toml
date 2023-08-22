@@ -28,6 +28,7 @@ wasmparser = "0.110.0"
 wasmtime = "11.0.1"
 
 [dev-dependencies]
+env_logger = "0.10.0"
 wasmprinter = "0.2.62"
 wat = "1.0.69"
 

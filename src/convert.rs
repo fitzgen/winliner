@@ -144,6 +144,13 @@ pub fn external_kind(external_kind: wasmparser::ExternalKind) -> wasm_encoder::E
 }
 
 pub fn const_expr(const_expr: wasmparser::ConstExpr) -> Result<wasm_encoder::ConstExpr> {
+    const_expr_with_func_delta(const_expr, 0)
+}
+
+pub fn const_expr_with_func_delta(
+    const_expr: wasmparser::ConstExpr,
+    func_delta: u32,
+) -> Result<wasm_encoder::ConstExpr> {
     let mut ops = const_expr.get_operators_reader().into_iter();
 
     let result = match ops.next() {
@@ -166,7 +173,7 @@ pub fn const_expr(const_expr: wasmparser::ConstExpr) -> Result<wasm_encoder::Con
             wasm_encoder::ConstExpr::ref_null(heap_type(hty))
         }
         Some(Ok(wasmparser::Operator::RefFunc { function_index })) => {
-            wasm_encoder::ConstExpr::ref_func(function_index)
+            wasm_encoder::ConstExpr::ref_func(function_index + func_delta)
         }
         Some(Ok(wasmparser::Operator::GlobalGet { global_index })) => {
             wasm_encoder::ConstExpr::global_get(global_index)

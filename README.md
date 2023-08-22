@@ -97,11 +97,12 @@ TODO
   proposal](https://github.com/WebAssembly/reference-types). You must either
   disable this proposal or manually uphold the invariant that the `funcref`
   table is never mutated. Breaking this invariant will likely lead to diverging
-  behavior from the original program and very wonky bugs!
+  behavior from the original program and very wonky bugs! Any exported funcref
+  tables must additionally not be mutated by the host.
 
-* Winliner cannot optimize `call_ref` instructions because WebAssembly function
-  references are not comparable, so we can't insert the `if callee ==
-  speculative_callee` check.
+* Winliner only optimizes `call_indirect` instructions; it cannot optimize
+  `call_ref` instructions because WebAssembly function references are not
+  comparable, so we can't insert the `if callee == speculative_callee` check.
 
 ## Using Winliner as a Library
 

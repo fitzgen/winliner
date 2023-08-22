@@ -28,6 +28,8 @@ struct CallSiteProfile {
 impl Profile {
     /// Extract a profile from a Wasm program that was instrumented with the
     /// "three-globals" strategy.
+    //
+    // TODO FITZGEN: dep inject here to avoid a public dep on wasmtime?
     pub fn from_three_globals(
         store: impl wasmtime::AsContext,
         instance: wasmtime::Instance,

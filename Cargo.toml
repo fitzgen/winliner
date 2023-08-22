@@ -25,11 +25,11 @@ env_logger = { version = "0.10.0", optional = true }
 log = "0.4.20"
 wasm-encoder = "0.31.1"
 wasmparser = "0.110.0"
-wasmtime = "11.0.1"
 
 [dev-dependencies]
 env_logger = "0.10.0"
 wasmprinter = "0.2.62"
+wasmtime = "11.0.1"
 wat = "1.0.69"
 
 [workspace]

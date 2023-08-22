@@ -899,7 +899,7 @@ pub enum InstrumentationStrategy {
     ///
     /// When using this strategy, it is your responsibility to provide the host
     /// function that this instrumentation inserts calls to, and to build up the
-    /// profiles using the [`ProfileBuilder`] type.
+    /// profiles using the [`ProfileBuilder`][crate::ProfileBuilder] type.
     ///
     /// Note that, while this strategy yields precise profiling information, it
     /// incurs fairly high overheads, likely making it unacceptable to run the

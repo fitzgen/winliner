@@ -40,14 +40,31 @@ use anyhow::{anyhow, ensure, Context, Result};
 /// ## Serializing and Deserializing `Profile`s
 ///
 /// When the `serde` cargo feature is enabled, `Profile` implements
-/// `serde::Serialize` and `serde::Deserialize`.
+/// `serde::Serialize` and `serde::Deserialize`:
+///
+/// ```
+/// # fn foo() -> anyhow::Result<()> {
+/// #![cfg(feature = "serde")]
+///
+/// use winliner::Profile;
+///
+/// // Read a profile in from disk.
+/// let file = std::fs::File::open("path/to/my/profile.json")?;
+/// let my_profile: Profile = serde_json::from_reader(file)?;
+///
+/// // Write a profile out to disk.
+/// let file = std::fs::File::create("path/to/new/profile.json")?;
+/// serde_json::to_writer(file, &my_profile)?;
+/// # Ok(()) }
+/// ```
 #[derive(Clone, Default)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Profile {
     // Per-call site profiling information.
     //
     // Note that a lack of profile data for a particular call site implies that
-    // the associated `call_indirect` was never executed.
+    // the associated `call_indirect` was never executed (or at least never
+    // observed to have been executed: our profiling is sometimes imprecise).
     call_sites: BTreeMap<u32, CallSiteProfile>,
 }
 

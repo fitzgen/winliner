@@ -22,6 +22,7 @@
 * [Example Usage](#example-usage)
 * [Caveats](#caveats)
 * [Using Winliner as a Library](#using-winliner-as-a-library)
+* [Acknowledgements](#acknowledgements)
 
 ## About
 
@@ -128,3 +129,12 @@ $ winliner optimize --profile profile.json my-program.wasm > my-program.winlined
 ## Using Winliner as a Library
 
 TODO
+
+## Acknowledgements
+
+The inspiration for this tool -- along with the low-overhead but imprecise
+"three globals" instrumentation strategy -- sprang from conversations with
+[Chris Fallin] and [Luke Wagner].
+
+[Chris Fallin]: https://github.com/cfallin
+[Luke Wagner]: https://github.com/lukewagner

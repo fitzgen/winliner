@@ -210,7 +210,7 @@ fn profile(command: ProfileCommand) -> Result<()> {
     };
 
     serde_json::to_writer(output, &profile)
-        .with_context(|| format!("failed to write profile to '{output_name}'"))?;
+        .with_context(|| format!("failed to write profile to {output_name}"))?;
 
     Ok(())
 }
@@ -263,12 +263,48 @@ fn wasi_context(command: &ProfileCommand) -> Result<WasiCtx> {
     Ok(ctx.build())
 }
 
-/// TODO FITZGEN
+/// Merge multiple profiles into a single profile.
 #[derive(Parser)]
-struct MergeCommand {}
+struct MergeCommand {
+    /// Where to write the resulting merged profile to. The merged profile is
+    /// written to stdout by default if no output path is supplied.
+    #[clap(short, long)]
+    output: Option<PathBuf>,
+
+    /// The profiles to merge together.
+    profiles: Vec<PathBuf>,
+}
 
 fn merge(command: MergeCommand) -> Result<()> {
-    let _ = command;
+    let mut merged = Profile::default();
+
+    for path in &command.profiles {
+        let file = std::fs::File::open(path)
+            .with_context(|| format!("failed to open '{}'", path.display()))?;
+        let file = std::io::BufReader::new(file);
+        let profile = serde_json::from_reader(file)
+            .with_context(|| format!("failed to read profile from '{}'", path.display()))?;
+        merged.merge(&profile);
+    }
+
+    let stdout;
+    let output_name;
+    let output: Box<dyn Write> = match command.output.as_ref() {
+        Some(path) => {
+            output_name = format!("'{}'", path.display());
+            Box::new(std::io::BufWriter::new(std::fs::File::create(path)?))
+        }
+        None => {
+            output_name = "stdout".to_string();
+            stdout = std::io::stdout();
+            let stdout = stdout.lock();
+            Box::new(stdout)
+        }
+    };
+
+    serde_json::to_writer(output, &merged)
+        .with_context(|| format!("failed to write merged profile to {output_name}"))?;
+
     Ok(())
 }
 

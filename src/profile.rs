@@ -24,7 +24,7 @@ use anyhow::{anyhow, ensure, Context, Result};
 /// strategy, you can use the [`Profile::from_three_globals`] constructor.
 ///
 /// 2. If you instrumented your Wasm using the
-/// [`InstrumentationStrategy::PreciseHostCalls`][crate::InstrumentationStrategy::PreciseHostCalls]
+/// [`InstrumentationStrategy::HostCalls`][crate::InstrumentationStrategy::HostCalls]
 /// strategy, you can implement the `winliner.add_indirect_call` host import
 /// using a [`ProfileBuilder`][crate::ProfileBuilder] and then call
 /// [`ProfileBuilder::build`][crate::ProfileBuilder::build] to extract the
@@ -189,7 +189,7 @@ impl Profile {
 /// A builder for constructing [`Profile`][crate::Profile]s.
 ///
 /// Primarily for use in conjunction with
-/// [`InstrumentationStrategy::PreciseHostCalls`][crate::InstrumentationStrategy::PreciseHostCalls]
+/// [`InstrumentationStrategy::HostCalls`][crate::InstrumentationStrategy::HostCalls]
 /// and implementing the `winliner.add_indirect_call` import function for the
 /// instrumented Wasm.
 ///

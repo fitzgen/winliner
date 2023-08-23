@@ -87,7 +87,27 @@ $ cargo install winliner --all-features
 
 ## Example Usage
 
-TODO
+First, instrument your Wasm program:
+
+```shell-session
+$ winliner instrument my-program.wasm > my-program.instrumented.wasm
+```
+
+Next, run the instrumented program to build a profile. This can either be done
+in your Wasm environment of choice (e.g. the Web) with a little glue code to
+extract and shepherd out the profile, or you can run within Winliner itself and
+the Wasmtime-based WASI environment that comes with it:
+
+```shell-session
+$ winliner profile my-program.instrumented.wasm > profile.json
+```
+
+Finally, tell Winliner to optimize the original program based on the observed
+`call_indirect` behavior observed in the given profile:
+
+```shell-session
+$ winliner optimize --profile profile.json my-program.wasm > my-program.winlined.wasm
+```
 
 ## Caveats
 
@@ -102,7 +122,8 @@ TODO
 
 * Winliner only optimizes `call_indirect` instructions; it cannot optimize
   `call_ref` instructions because WebAssembly function references are not
-  comparable, so we can't insert the `if callee == speculative_callee` check.
+  comparable, so we can't insert the `if actual_callee == speculative_callee`
+  check.
 
 ## Using Winliner as a Library
 

@@ -1,4 +1,4 @@
-//! Winliner is an indirect call inliner for WebAssembly.
+#![doc = include_str!("../README.md")]
 
 #![deny(missing_docs)]
 

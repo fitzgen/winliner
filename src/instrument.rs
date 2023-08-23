@@ -27,14 +27,12 @@ pub struct Instrumenter {
     /// * three-globals: A low-overhead but imprecise instrumentation strategy
     ///   that inserts three globals for every indirect call site.
     ///
-    /// * precise-host-calls: A precise but high-overhead strategy that inserts
-    ///   calls out to the host.
+    /// * host-calls: A precise but high-overhead strategy that inserts calls
+    ///   out to the host.
     ///
     /// See the API documentation for `winliner::InstrumentationStrategy` for
     /// more details.
-    ///
-    /// Default: three-globals
-    #[cfg_attr(feature = "clap", clap(long))]
+    #[cfg_attr(feature = "clap", clap(short, long, default_value = "three-globals"))]
     strategy: InstrumentationStrategy,
 }
 
@@ -89,9 +87,9 @@ impl Instrumenter {
         // instrumented Wasm binary.
         let mut new_sections: Vec<CowSection> = vec![];
 
-        // The index of the type for the precise-host-call imported function.
+        // The index of the type for the host-call imported function.
         let mut host_call_type_index = None;
-        // The index of the precise-host-call imported function.
+        // The index of the host-call imported function.
         let mut host_call_func_index = None;
 
         // The number of functions we have prepended to the function index
@@ -99,7 +97,7 @@ impl Instrumenter {
         // much.
         let num_prepended_funcs = match self.strategy {
             InstrumentationStrategy::ThreeGlobals => 0,
-            InstrumentationStrategy::PreciseHostCalls => 1,
+            InstrumentationStrategy::HostCalls => 1,
         };
 
         // The new global and export sections for when we are doing the
@@ -112,7 +110,7 @@ impl Instrumenter {
                 Some(wasm_encoder::GlobalSection::new()),
                 Some(wasm_encoder::ExportSection::new()),
             ),
-            InstrumentationStrategy::PreciseHostCalls => (None, None),
+            InstrumentationStrategy::HostCalls => (None, None),
         };
 
         // The new code section, containing the instrumented code.
@@ -133,7 +131,7 @@ impl Instrumenter {
         let mut num_indirect_call_sites = 0;
 
         // Helper to ensure we've added our modified type section when using the
-        // precise-host-calls strategy.
+        // host-calls strategy.
         let mut added_precise_host_types = false;
         let mut ensure_precise_host_type_section =
             |new_sections: &mut Vec<_>,
@@ -152,7 +150,7 @@ impl Instrumenter {
             };
 
         // Helper to ensure we've added our modified import section when using
-        // the precise-host-calls strategy.
+        // the host-calls strategy.
         let mut added_precise_host_imports = false;
         let mut ensure_precise_host_imports_section =
             |new_sections: &mut Vec<_>,
@@ -197,7 +195,7 @@ impl Instrumenter {
                         InstrumentationStrategy::ThreeGlobals => {
                             borrowed(&mut new_sections, full_wasm, types.clone(), SectionId::Type)
                         }
-                        InstrumentationStrategy::PreciseHostCalls => {
+                        InstrumentationStrategy::HostCalls => {
                             ensure_precise_host_type_section(
                                 &mut new_sections,
                                 Some(types.clone()),
@@ -220,7 +218,7 @@ impl Instrumenter {
                     InstrumentationStrategy::ThreeGlobals => {
                         borrowed(&mut new_sections, full_wasm, imports, SectionId::Import);
                     }
-                    InstrumentationStrategy::PreciseHostCalls => {
+                    InstrumentationStrategy::HostCalls => {
                         ensure_precise_host_type_section(
                             &mut new_sections,
                             None,
@@ -236,7 +234,7 @@ impl Instrumenter {
                 },
 
                 Payload::FunctionSection(funcs) => {
-                    if self.strategy == InstrumentationStrategy::PreciseHostCalls {
+                    if self.strategy == InstrumentationStrategy::HostCalls {
                         ensure_precise_host_type_section(
                             &mut new_sections,
                             None,
@@ -284,7 +282,7 @@ impl Instrumenter {
                             );
                         }
                     }
-                    InstrumentationStrategy::PreciseHostCalls => {
+                    InstrumentationStrategy::HostCalls => {
                         let mut new_global_section = wasm_encoder::GlobalSection::new();
                         for global in globals.into_iter() {
                             let global = global?;
@@ -313,7 +311,7 @@ impl Instrumenter {
                             );
                         }
                     }
-                    InstrumentationStrategy::PreciseHostCalls => {
+                    InstrumentationStrategy::HostCalls => {
                         borrowed(&mut new_sections, full_wasm, exports, SectionId::Export)
                     }
                 },
@@ -532,7 +530,7 @@ impl Instrumenter {
                                                 current_callee_local,
                                             ));
                                     }
-                                    InstrumentationStrategy::PreciseHostCalls => {
+                                    InstrumentationStrategy::HostCalls => {
                                         // Emit the following code:
                                         //
                                         // ```
@@ -904,7 +902,7 @@ pub enum InstrumentationStrategy {
     /// Note that, while this strategy yields precise profiling information, it
     /// incurs fairly high overheads, likely making it unacceptable to run the
     /// instrumented Wasm programs in production scenarios.
-    PreciseHostCalls,
+    HostCalls,
 }
 
 impl FromStr for InstrumentationStrategy {
@@ -912,10 +910,10 @@ impl FromStr for InstrumentationStrategy {
     fn from_str(s: &str) -> Result<Self> {
         match s {
             "three-globals" => Ok(InstrumentationStrategy::ThreeGlobals),
-            "precise-host-calls" => Ok(InstrumentationStrategy::PreciseHostCalls),
+            "host-calls" => Ok(InstrumentationStrategy::HostCalls),
             _ => bail!(
                 "Unknown instrumentation strategy '{s}'; valid strategies are: three-globals, \
-                 precise-host-calls"
+                 host-calls"
             ),
         }
     }

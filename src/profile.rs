@@ -36,7 +36,13 @@ use anyhow::{anyhow, ensure, Context, Result};
 /// execution. Luckily, a single `Profile` can represent many different
 /// executions! For each profiling run, record a new `Profile` and then call
 /// [`Profile::merge`] to combine them into a single, aggregate `Profile`.
+///
+/// ## Serializing and Deserializing `Profile`s
+///
+/// When the `serde` cargo feature is enabled, `Profile` implements
+/// `serde::Serialize` and `serde::Deserialize`.
 #[derive(Clone, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Profile {
     // Per-call site profiling information.
     //
@@ -46,6 +52,7 @@ pub struct Profile {
 }
 
 #[derive(Clone, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 struct CallSiteProfile {
     // The total count of indirect calls for this call site.
     total_call_count: u64,

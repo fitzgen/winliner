@@ -22,9 +22,21 @@ jobs:
     - uses: actions/checkout@v3
     - name: Build docs
       run: cargo rustdoc -p winliner --all-features -- -D rustdoc::broken-intra-doc-links
+
   build_cli:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v3
     - name: Build CLI
       run: cargo build --bin winliner --all-features
+
+  # Check that you can compile the library to Wasm, so that you could extract
+  # profiles on the Web, for example.
+  compile_to_wasm:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    - name: Install the wasm32-unknown-unknown target
+      run: rustup target add wasm32-unknown-unknown
+    - name: Compile to Wasm
+      run: cargo build --target wasm32-unknown-unknown

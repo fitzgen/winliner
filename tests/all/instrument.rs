@@ -572,12 +572,12 @@ mod three_globals {
     }
 }
 
-mod precise_host_calls {
+mod host_calls {
     use super::*;
 
     fn instrumenter() -> Instrumenter {
         let mut i = Instrumenter::new();
-        i.strategy(InstrumentationStrategy::PreciseHostCalls);
+        i.strategy(InstrumentationStrategy::HostCalls);
         i
     }
 

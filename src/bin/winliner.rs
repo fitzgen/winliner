@@ -308,14 +308,50 @@ fn merge(command: MergeCommand) -> Result<()> {
     Ok(())
 }
 
-/// TODO FITZGEN
+/// Optimize a Wasm program based on profiling data.
 #[derive(Parser)]
 struct OptimizeCommand {
     #[clap(flatten)]
     optimizer: Optimizer,
+
+    /// Where to write the resulting optimzed Wasm to. The optimized Wasm is
+    /// written to stdout by default if no output path is supplied.
+    #[clap(short, long)]
+    output: Option<PathBuf>,
+
+    /// The profiling data.
+    #[clap(short, long, required = true)]
+    profile: PathBuf,
+
+    /// The original, uninstrumented Wasm program.
+    wasm: PathBuf,
 }
 
 fn optimize(command: OptimizeCommand) -> Result<()> {
-    let _ = command;
+    let file = std::fs::File::open(&command.profile)
+        .with_context(|| format!("failed to open '{}'", command.profile.display()))?;
+    let profile: Profile = serde_json::from_reader(file).with_context(|| {
+        format!(
+            "failed to read profile from '{}'",
+            command.profile.display()
+        )
+    })?;
+
+    let wasm = std::fs::read(&command.wasm)
+        .with_context(|| format!("failed to read '{}'", command.wasm.display()))?;
+
+    let output = command.optimizer.optimize(&profile, &wasm)?;
+
+    if let Some(path) = command.output.as_ref() {
+        std::fs::write(path, &output)
+            .with_context(|| format!("failed to write output to '{}'", path.display()))?;
+    } else {
+        let stdout = std::io::stdout();
+        let mut stdout = stdout.lock();
+        stdout
+            .write_all(&output)
+            .context("failed to write output to stdout")?;
+    }
+
     Ok(())
 }

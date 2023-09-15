@@ -131,7 +131,48 @@ $ winliner optimize --profile profile.json my-program.wasm > my-program.winlined
 
 ## Using Winliner as a Library
 
-TODO
+First, add a dependency on Winliner to your `Cargo.toml`:
+
+```toml
+[dependencies]
+winliner = "1"
+```
+
+Then, use the library like so:
+
+```rust,no_run
+use winliner::{InstrumentationStrategy, Instrumenter, Optimizer, Profile, Result};
+
+fn main() -> Result<()> {
+    let original_wasm = std::fs::read("path/to/my.wasm")?;
+
+    // Configure instrumentation.
+    let mut instrumenter = Instrumenter::new();
+    instrumenter.strategy(InstrumentationStrategy::ThreeGlobals);
+
+    // Instrument our wasm.
+    let instrumented_wasm = instrumenter.instrument(&original_wasm)?;
+
+    // Get a profile for our Wasm program from somewhere. Read it from disk,
+    // record it now in this process, etc...
+    //
+    // See the API docs for `Profile` for more details.
+    let profile = Profile::default();
+
+    // Configure optimization and thresholds for inlining.
+    let mut optimizer = Optimizer::new();
+    optimizer
+        .min_total_calls(100)
+        .min_ratio(0.8)?
+        .max_inline_depth(3);
+
+    // Run the optimizer with the given profile!
+    let optimized_wasm = optimizer.optimize(&profile, &original_wasm)?;
+
+    std::fs::write("path/to/optimized.wasm", optimized_wasm)?;
+    Ok(())
+}
+```
 
 ## Acknowledgements
 

@@ -572,7 +572,7 @@ impl Optimizer {
             .callee_to_count
             .iter()
             .map(|(callee, count)| (*callee, *count))
-            .max_by(|a, b| a.1.cmp(&b.1).then(a.0.cmp(&b.0)));
+            .max_by(|a, b| a.1.cmp(&b.1).then(b.0.cmp(&a.0)));
         let (callee_index_in_table, callee_count) = match callee {
             Some(x) => x,
             None => return Ok(None),
@@ -594,6 +594,15 @@ impl Optimizer {
         // ... and if that function index is not already on our winlining stack
         // (i.e. we aren't in a recursive inlining chain)...
         if on_stack.contains(&callee_func_index) {
+            return Ok(None);
+        }
+
+        // ... and if that function has the correct type (if this is not true
+        // then either the profile is bogus/mismatched or every time the call
+        // site was executed it trapped)...
+        if context.funcs[usize::try_from(callee_func_index - context.num_imported_funcs).unwrap()]
+            != type_index
+        {
             return Ok(None);
         }
 
@@ -643,7 +652,6 @@ impl Optimizer {
             wasmparser::StructuralType::Func(ty) => ty,
             _ => bail!("function's type must be a function type"),
         };
-        dbg!(ty);
 
         // First, create the locals for the parameters in order.
         for param_ty in ty.params() {

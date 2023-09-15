@@ -309,6 +309,16 @@ fn merge(command: MergeCommand) -> Result<()> {
 }
 
 /// Optimize a Wasm program based on profiling data.
+///
+/// You must ensure that:
+///
+/// 1. The given Wasm must be the original, uninstrumented Wasm program.
+///
+/// 2. The profile must have been created from an instrumented version of
+///    this Wasm program.
+///
+/// Failure to satisfy these requirements may result in a mis-optimized Wasm
+/// binary that has divergent behavior from the original Wasm program.
 #[derive(Parser)]
 struct OptimizeCommand {
     #[clap(flatten)]

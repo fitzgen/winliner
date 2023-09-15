@@ -65,18 +65,18 @@ pub struct Profile {
     // Note that a lack of profile data for a particular call site implies that
     // the associated `call_indirect` was never executed (or at least never
     // observed to have been executed: our profiling is sometimes imprecise).
-    call_sites: BTreeMap<u32, CallSiteProfile>,
+    pub(crate) call_sites: BTreeMap<u32, CallSiteProfile>,
 }
 
 #[derive(Clone, Default)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-struct CallSiteProfile {
+pub(crate) struct CallSiteProfile {
     // The total count of indirect calls for this call site.
-    total_call_count: u64,
+    pub(crate) total_call_count: u64,
     // The observed callees and their associated counts. Note that these counts
     // don't necessarily add up to `total_call_count` since we can be missing
     // information due to imprecise instrumentation strategies.
-    callee_to_count: BTreeMap<u32, u64>,
+    pub(crate) callee_to_count: BTreeMap<u32, u64>,
 }
 
 impl Profile {

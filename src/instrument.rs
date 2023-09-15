@@ -1,6 +1,7 @@
 //! Instrumenting a Wasm program to observe indirect call callees.
 
-use anyhow::{bail, Error, Result};
+use crate::cow_section::{borrowed, owned, CowSection};
+use anyhow::{bail, ensure, Error, Result};
 use std::str::FromStr;
 use wasm_encoder::SectionId;
 use wasmparser::{Chunk, Payload};
@@ -19,6 +20,27 @@ pub struct Instrumenter {
     /// actually it is okay in this particular case.
     #[cfg_attr(feature = "clap", clap(long))]
     allow_table_mutation: bool,
+
+    /// Allow arbitrary table element offsets.
+    ///
+    /// By default, Winliner only allows constant table element offsets, so that
+    /// it can determine exactly which function `table[N]` corresponds to. If
+    /// Winliner doesn't definitively know which function `table[N]` is, it
+    /// can't be sure that it is inlining the right function. This flag lets you
+    /// pinky promise that a non-const offset table element isn't going to lead
+    /// to divergence and misoptimization.
+    #[cfg_attr(feature = "clap", clap(long))]
+    allow_arbitrary_element_offsets: bool,
+
+    /// Allow table imports.
+    ///
+    /// By default, Winliner only allows locally-defined tables, and disallows
+    /// imported tables. This is because Winliner doesn't have any insight into
+    /// the contents of imported tables, only the contents added from local
+    /// element segments. This flag lets you pinky promise that an imported
+    /// table isn't going to lead to divergence and misoptimization.
+    #[cfg_attr(feature = "clap", clap(long))]
+    allow_table_imports: bool,
 
     /// The strategy of instrumentation to use.
     ///
@@ -40,6 +62,8 @@ impl Default for Instrumenter {
     fn default() -> Self {
         Instrumenter {
             allow_table_mutation: false,
+            allow_arbitrary_element_offsets: false,
+            allow_table_imports: false,
             strategy: InstrumentationStrategy::ThreeGlobals,
         }
     }
@@ -59,6 +83,31 @@ impl Instrumenter {
     /// actually it is okay in this particular case.
     pub fn allow_table_mutation(&mut self, allow: bool) -> &mut Self {
         self.allow_table_mutation = allow;
+        self
+    }
+
+    /// Allow arbitrary table element offsets.
+    ///
+    /// By default, Winliner only allows constant table element offsets, so that
+    /// it can determine exactly which function `table[N]` corresponds to. If
+    /// Winliner doesn't definitively know which function `table[N]` is, it
+    /// can't be sure that it is inlining the right function. This method lets
+    /// you pinky promise that a non-const offset table element isn't going to
+    /// lead to divergence and misoptimization.
+    pub fn allow_arbitrary_element_offsets(&mut self, allow: bool) -> &mut Self {
+        self.allow_arbitrary_element_offsets = allow;
+        self
+    }
+
+    /// Allow table imports.
+    ///
+    /// By default, Winliner only allows locally-defined tables, and disallows
+    /// imported tables. This is because Winliner doesn't have any insight into
+    /// the contents of imported tables, only the contents added from local
+    /// element segments. This method lets you pinky promise that an imported
+    /// table isn't going to lead to divergence and misoptimization.
+    pub fn allow_table_imports(&mut self, allow: bool) -> &mut Self {
+        self.allow_table_imports = allow;
         self
     }
 
@@ -214,24 +263,35 @@ impl Instrumenter {
                     }
                 }
 
-                Payload::ImportSection(imports) => match self.strategy {
-                    InstrumentationStrategy::ThreeGlobals => {
-                        borrowed(&mut new_sections, full_wasm, imports, SectionId::Import);
+                Payload::ImportSection(imports) => {
+                    for imp in imports.clone().into_iter() {
+                        if let wasmparser::TypeRef::Table(_) = imp?.ty {
+                            ensure!(
+                                self.allow_table_imports,
+                                "imported tables are disallowed and can lead to divergence between \
+                                 the original and optimized Wasm programs",
+                            );
+                        }
                     }
-                    InstrumentationStrategy::HostCalls => {
-                        ensure_precise_host_type_section(
-                            &mut new_sections,
-                            None,
-                            &mut host_call_type_index,
-                        )?;
-                        ensure_precise_host_imports_section(
-                            &mut new_sections,
-                            Some(imports),
-                            host_call_type_index.unwrap(),
-                            &mut host_call_func_index,
-                        )?;
+                    match self.strategy {
+                        InstrumentationStrategy::ThreeGlobals => {
+                            borrowed(&mut new_sections, full_wasm, imports, SectionId::Import);
+                        }
+                        InstrumentationStrategy::HostCalls => {
+                            ensure_precise_host_type_section(
+                                &mut new_sections,
+                                None,
+                                &mut host_call_type_index,
+                            )?;
+                            ensure_precise_host_imports_section(
+                                &mut new_sections,
+                                Some(imports),
+                                host_call_type_index.unwrap(),
+                                &mut host_call_func_index,
+                            )?;
+                        }
                     }
-                },
+                }
 
                 Payload::FunctionSection(funcs) => {
                     if self.strategy == InstrumentationStrategy::HostCalls {
@@ -324,6 +384,29 @@ impl Instrumenter {
                 ),
 
                 Payload::ElementSection(elements) => {
+                    for elem in elements.clone().into_iter() {
+                        let elem = elem?;
+                        if let wasmparser::ElementKind::Active {
+                            table_index: _,
+                            offset_expr,
+                        } = elem.kind
+                        {
+                            let mut ops = offset_expr.get_operators_reader().into_iter();
+                            match (ops.next(), ops.next(), ops.next()) {
+                                (
+                                    Some(Ok(wasmparser::Operator::I32Const { .. })),
+                                    Some(Ok(wasmparser::Operator::End)),
+                                    None,
+                                ) => {}
+                                _ => ensure!(
+                                    self.allow_arbitrary_element_offsets,
+                                    "unsupported table element offset: only `i32.const N` offsets \
+                                     are allowed"
+                                ),
+                            }
+                        }
+                    }
+
                     if num_prepended_funcs == 0 {
                         borrowed(&mut new_sections, full_wasm, elements, SectionId::Element);
                     } else {
@@ -613,7 +696,7 @@ impl Instrumenter {
             }
         }
 
-        log::trace!("Building final module");
+        log::trace!("Building final instrumented module");
         let mut module = wasm_encoder::Module::new();
         for section in &new_sections {
             use wasm_encoder::Section;
@@ -641,68 +724,6 @@ impl Instrumenter {
         }
         Ok(module.finish())
     }
-}
-
-enum CowSection<'a> {
-    Borrowed(wasm_encoder::RawSection<'a>),
-    Owned(OwnedSection),
-}
-
-impl<'a> wasm_encoder::Encode for CowSection<'a> {
-    fn encode(&self, sink: &mut Vec<u8>) {
-        match self {
-            CowSection::Borrowed(b) => b.encode(sink),
-            CowSection::Owned(o) => o.encode(sink),
-        }
-    }
-}
-
-impl<'a> wasm_encoder::Section for CowSection<'a> {
-    fn id(&self) -> u8 {
-        match self {
-            CowSection::Borrowed(b) => b.id(),
-            CowSection::Owned(o) => o.id(),
-        }
-    }
-}
-
-struct OwnedSection {
-    id: u8,
-    data: Vec<u8>,
-}
-
-impl wasm_encoder::Encode for OwnedSection {
-    fn encode(&self, sink: &mut Vec<u8>) {
-        sink.extend(&self.data);
-    }
-}
-
-impl wasm_encoder::Section for OwnedSection {
-    fn id(&self) -> u8 {
-        self.id
-    }
-}
-
-fn borrowed<'a, T>(
-    new_sections: &mut Vec<CowSection<'a>>,
-    full_wasm: &'a [u8],
-    reader: wasmparser::SectionLimited<T>,
-    id: SectionId,
-) {
-    let id = id as u8;
-    log::trace!("Borrowing section {id} and leaving it unmodified");
-    new_sections.push(CowSection::Borrowed(wasm_encoder::RawSection {
-        id,
-        data: &full_wasm[reader.range()],
-    }));
-}
-
-fn owned<'a>(new_sections: &mut Vec<CowSection<'a>>, section: impl wasm_encoder::Section) {
-    let id = section.id();
-    log::trace!("Adding instrumented section {id}");
-    let mut data = vec![];
-    section.encode(&mut data);
-    new_sections.push(CowSection::Owned(OwnedSection { id, data }));
 }
 
 fn precise_host_calls_new_type_section(

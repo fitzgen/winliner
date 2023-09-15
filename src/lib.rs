@@ -2,6 +2,7 @@
 #![deny(missing_docs)]
 
 mod convert;
+mod cow_section;
 mod instrument;
 mod optimize;
 mod profile;

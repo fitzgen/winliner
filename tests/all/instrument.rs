@@ -25,10 +25,7 @@ fn assert_instrumentation(
     let actual_wat =
         wasmprinter::print_bytes(&actual_wasm).context("failed to print output Wasm as WAT")?;
 
-    let actual_wat = actual_wat.trim();
-    println!("Expected:\n\n{expected_wat}\n\n");
-    let expected_wat = expected_wat.trim();
-    println!("Actual:\n\n{actual_wat}\n\n");
+    super::assert_no_diff(expected_wat.trim(), actual_wat.trim());
 
     wasmparser::Validator::new_with_features(wasmparser::WasmFeatures {
         function_references: true,
@@ -36,10 +33,6 @@ fn assert_instrumentation(
     })
     .validate_all(&actual_wasm)
     .context("the instrumented wasm failed to validate")?;
-
-    if expected_wat != actual_wat {
-        panic!("expected != actual");
-    }
 
     Ok(())
 }

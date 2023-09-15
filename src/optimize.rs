@@ -469,7 +469,8 @@ impl Optimizer {
                     if let Some(new_entry) = self.try_enqueue_for_winlining(
                         context,
                         &on_stack,
-                        num_locals,
+                        &mut locals,
+                        &mut num_locals,
                         &mut new_insts,
                         temp_callee_local,
                         call_site_index,
@@ -542,86 +543,129 @@ impl Optimizer {
         &self,
         context: &OptimizeContext<'a, 'b>,
         on_stack: &HashSet<u32>,
-        num_locals: u32,
+        locals: &mut Vec<(u32, wasm_encoder::ValType)>,
+        num_locals: &mut u32,
         new_insts: &mut Vec<CowInst>,
         temp_callee_local: u32,
         call_site_index: u32,
         table_index: u32,
         type_index: u32,
     ) -> Result<Option<StackEntry<'a>>> {
-        // If we haven't already reached our maximum inlining
-        // depth...
+        // If we haven't already reached our maximum inlining depth...
         if on_stack.len() >= self.max_inline_depth {
             return Ok(None);
         }
+
         // ... and we have profiling information for this call site...
-        if let Some(call_site) = context.profile.call_sites.get(&call_site_index) {
-            // ... and this call site is hot enough...
-            if call_site.total_call_count < self.min_total_calls {
-                return Ok(None);
-            }
-            // ... then get the hottest callee table index...
-            let callee = call_site
-                .callee_to_count
-                .iter()
-                .map(|(callee, count)| (*callee, *count))
-                .max_by(|a, b| a.1.cmp(&b.1).then(a.0.cmp(&b.0)));
-            if let Some((callee_index_in_table, callee_count)) = callee {
-                // ... and if that hottest callee is called
-                // often enough...
-                let callee_ratio = callee_count as f64 / call_site.total_call_count as f64;
-                if callee_ratio < self.min_ratio {
-                    return Ok(None);
-                }
-                // ... and if we statically know what
-                // function index `table[callee]` is...
-                if let Some(calle_func_index) =
-                    context.tables[table_index].get(callee_index_in_table)
-                {
-                    // ... and if that function index is
-                    // not already on our winlining
-                    // stack...
-                    if on_stack.contains(&calle_func_index) {
-                        return Ok(None);
-                    }
-                    // ... then we can winline this
-                    // callee and push it onto our
-                    // stack!
-                    let defined_func_index = calle_func_index - context.num_imported_funcs;
-                    let locals_delta = num_locals;
-                    let func_body =
-                        context.func_bodies[usize::try_from(defined_func_index).unwrap()].clone();
-                    let ops = func_body
-                        .get_operators_reader()?
-                        .into_iter_with_offsets()
-                        .peekable();
+        let call_site = match context.profile.call_sites.get(&call_site_index) {
+            Some(x) => x,
+            None => return Ok(None),
+        };
 
-                    new_insts.push(CowInst::Owned(wasm_encoder::Instruction::LocalTee(
-                        temp_callee_local,
-                    )));
-                    new_insts.push(CowInst::Owned(wasm_encoder::Instruction::I32Const(
-                        callee_index_in_table as i32,
-                    )));
-                    new_insts.push(CowInst::Owned(wasm_encoder::Instruction::I32Eq));
-                    new_insts.push(CowInst::Owned(wasm_encoder::Instruction::If(
-                        wasm_encoder::BlockType::FunctionType(type_index),
-                    )));
-
-                    return Ok(Some(StackEntry {
-                        defined_func_index,
-                        locals_delta,
-                        func_body,
-                        ops,
-                        call_indirect_info: Some(StackEntryCallIndirectInfo {
-                            type_index,
-                            table_index,
-                        }),
-                    }));
-                }
-            }
+        // ... and this call site is hot enough...
+        if call_site.total_call_count < self.min_total_calls {
+            return Ok(None);
         }
 
-        Ok(None)
+        // ... then get the hottest callee table index...
+        let callee = call_site
+            .callee_to_count
+            .iter()
+            .map(|(callee, count)| (*callee, *count))
+            .max_by(|a, b| a.1.cmp(&b.1).then(a.0.cmp(&b.0)));
+        let (callee_index_in_table, callee_count) = match callee {
+            Some(x) => x,
+            None => return Ok(None),
+        };
+
+        // ... and if that hottest callee is called often enough...
+        let callee_ratio = callee_count as f64 / call_site.total_call_count as f64;
+        if callee_ratio < self.min_ratio {
+            return Ok(None);
+        }
+
+        // ... and if we statically know what function index `table[callee]`
+        // is...
+        let callee_func_index = match context.tables[table_index].get(callee_index_in_table) {
+            Some(x) => x,
+            None => return Ok(None),
+        };
+
+        // ... and if that function index is not already on our winlining stack
+        // (i.e. we aren't in a recursive inlining chain)...
+        if on_stack.contains(&callee_func_index) {
+            return Ok(None);
+        }
+
+        // ... then we can winline this callee and push it onto our stack!
+
+        let defined_func_index = callee_func_index - context.num_imported_funcs;
+        let locals_delta = *num_locals;
+        let func_body = context.func_bodies[usize::try_from(defined_func_index).unwrap()].clone();
+        let ops = func_body
+            .get_operators_reader()?
+            .into_iter_with_offsets()
+            .peekable();
+
+        // Add the first half of our speculative inlining sequence, before the
+        // inlined body:
+        //
+        //     local.tee $temp_callee_local
+        //     i32.const <callee_index_in_table>
+        //     i32.eq
+        //     if (param ...) (result ...)
+        //       local.set $callee_param_0
+        //       local.set $callee_param_1
+        //       ...
+        //       local.set $callee_param_N   <------- everything here and above
+        //       <inlined body>
+        //     else
+        //       local.get $temp_callee_local
+        //       call_indirect
+        //     end
+        new_insts.push(CowInst::Owned(wasm_encoder::Instruction::LocalTee(
+            temp_callee_local,
+        )));
+        new_insts.push(CowInst::Owned(wasm_encoder::Instruction::I32Const(
+            callee_index_in_table as i32,
+        )));
+        new_insts.push(CowInst::Owned(wasm_encoder::Instruction::I32Eq));
+        new_insts.push(CowInst::Owned(wasm_encoder::Instruction::If(
+            wasm_encoder::BlockType::FunctionType(type_index),
+        )));
+
+        // The callee function assumes that its parameters are in
+        // locals, but they are currently on the operand
+        // stack. Therefore, we need to "spill" them from the
+        // operand stack to a new set of locals in this function and
+        // update the locals delta appropriately.
+        let ty = match &context.types[usize::try_from(type_index).unwrap()].structural_type {
+            wasmparser::StructuralType::Func(ty) => ty,
+            _ => bail!("function's type must be a function type"),
+        };
+        dbg!(ty);
+
+        // First, create the locals for the parameters in order.
+        for param_ty in ty.params() {
+            locals.push((1, crate::convert::val_type(*param_ty)));
+            *num_locals += 1;
+        }
+
+        // Then "spill" them from the operand stack in reverse order.
+        for local in (locals_delta..*num_locals).rev() {
+            new_insts.push(CowInst::Owned(wasm_encoder::Instruction::LocalSet(local)));
+        }
+
+        Ok(Some(StackEntry {
+            defined_func_index,
+            locals_delta,
+            func_body,
+            ops,
+            call_indirect_info: Some(StackEntryCallIndirectInfo {
+                type_index,
+                table_index,
+            }),
+        }))
     }
 }
 

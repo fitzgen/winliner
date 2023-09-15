@@ -126,6 +126,9 @@ $ winliner optimize --profile profile.json my-program.wasm > my-program.winlined
   comparable, so we can't insert the `if actual_callee == speculative_callee`
   check.
 
+* Winliner assumes support for the (widely implemented) multi-value proposal in
+  its generated code.
+
 ## Using Winliner as a Library
 
 TODO

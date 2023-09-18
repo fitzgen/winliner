@@ -131,6 +131,7 @@ impl Optimizer {
             num_imported_funcs: 0,
             types: vec![],
             funcs: vec![],
+            call_site_offsets: vec![],
             tables: TablesInfo::default(),
             func_bodies: vec![],
         };
@@ -315,7 +316,7 @@ impl Optimizer {
             wasm = &wasm[consumed..];
         }
 
-        let mut new_code_section = Some(self.optimize_func_bodies(&context)?);
+        let mut new_code_section = Some(self.optimize_func_bodies(&mut context)?);
 
         log::trace!("Building final optimized module");
         let mut module = wasm_encoder::Module::new();
@@ -339,7 +340,21 @@ impl Optimizer {
         Ok(module.finish())
     }
 
-    fn optimize_func_bodies(&self, context: &OptimizeContext) -> Result<wasm_encoder::CodeSection> {
+    fn optimize_func_bodies(
+        &self,
+        context: &mut OptimizeContext,
+    ) -> Result<wasm_encoder::CodeSection> {
+        let mut call_site_index = 0;
+        for body in context.func_bodies.iter() {
+            context.call_site_offsets.push(call_site_index);
+            for op in body.get_operators_reader()?.into_iter() {
+                match op? {
+                    wasmparser::Operator::CallIndirect { .. } => call_site_index += 1,
+                    _ => {}
+                }
+            }
+        }
+
         let mut new_code_section = wasm_encoder::CodeSection::new();
         for (defined_func_index, body) in context.func_bodies.iter().cloned().enumerate() {
             let func_type = context.funcs[defined_func_index];
@@ -379,9 +394,6 @@ impl Optimizer {
         // The instructions making up the new body of the optimized function.
         let mut new_insts: Vec<CowInst> = vec![];
 
-        // The index of the current `call_indirect` site.
-        let mut call_site_index = 0;
-
         // Stack of functions to copy over to the new, optimized function. The
         // root is the original function itself and any subsequent entries are
         // being inlined into it. As we find a `call_indirect` that we'd like to
@@ -394,6 +406,8 @@ impl Optimizer {
                 .into_iter_with_offsets()
                 .peekable();
             StackEntry {
+                call_site_index: context.call_site_offsets
+                    [usize::try_from(defined_func_index).unwrap()],
                 defined_func_index,
                 locals_delta: 0,
                 func_body,
@@ -466,6 +480,7 @@ impl Optimizer {
                     table_index,
                     table_byte: _,
                 } => {
+                    entry.call_site_index += 1;
                     if let Some(new_entry) = self.try_enqueue_for_winlining(
                         context,
                         &on_stack,
@@ -473,10 +488,11 @@ impl Optimizer {
                         &mut num_locals,
                         &mut new_insts,
                         temp_callee_local,
-                        call_site_index,
+                        entry.call_site_index - 1,
                         table_index,
                         type_index,
                     )? {
+                        on_stack.insert(new_entry.defined_func_index);
                         stack.push(new_entry);
                     } else {
                         new_insts.push(CowInst::Owned(wasm_encoder::Instruction::CallIndirect {
@@ -484,8 +500,6 @@ impl Optimizer {
                             table: table_index,
                         }));
                     }
-
-                    call_site_index += 1;
                 }
 
                 // `local.{get,set,tee}` instruction's need their local index adjusted.
@@ -552,7 +566,7 @@ impl Optimizer {
         type_index: u32,
     ) -> Result<Option<StackEntry<'a>>> {
         // If we haven't already reached our maximum inlining depth...
-        if on_stack.len() >= self.max_inline_depth {
+        if (on_stack.len() - 1) >= self.max_inline_depth {
             return Ok(None);
         }
 
@@ -664,8 +678,17 @@ impl Optimizer {
             new_insts.push(CowInst::Owned(wasm_encoder::Instruction::LocalSet(local)));
         }
 
+        // Finally, create any additional locals that the callee function needs.
+        for l in func_body.get_locals_reader()?.into_iter() {
+            let (count, ty) = l?;
+            *num_locals += count;
+            locals.push((count, crate::convert::val_type(ty)));
+        }
+
         Ok(Some(StackEntry {
             defined_func_index,
+            call_site_index: context.call_site_offsets
+                [usize::try_from(defined_func_index).unwrap()],
             locals_delta,
             func_body,
             ops,
@@ -695,6 +718,11 @@ struct OptimizeContext<'a, 'b> {
     /// A map from defined function index to type.
     funcs: Vec<u32>,
 
+    /// A map from defined function index to the call site index offset for that
+    /// function (i.e. the count of how many `call_indirect` instructions
+    /// appeared in the code section before this function body).
+    call_site_offsets: Vec<u32>,
+
     /// The static information we have about the tables present in the module.
     tables: TablesInfo,
 
@@ -714,6 +742,9 @@ struct OptimizeContext<'a, 'b> {
 struct StackEntry<'a> {
     /// The defined function index of the function we are currently inlining.
     defined_func_index: u32,
+
+    /// The current `call_indirect` index we are processing.
+    call_site_index: u32,
 
     /// The delta to apply to all `local.{get,set,tee}` instructions when
     /// inlining this function body.

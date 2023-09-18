@@ -665,13 +665,290 @@ fn multiple_funcref_tables() -> Result<()> {
     )
 }
 
-// TODO FITZGEN: inline a call site with call sites that we want to inline inside it
+#[test]
+fn inlining_into_inlined_function() -> Result<()> {
+    assert_optimize(
+        Optimizer::new().min_total_calls(1_000).max_inline_depth(2),
+        &[&[(0, 1_000)], &[(1, 1_000)]],
+        r#"
+(module
+  (type (func (result i32)))
+  (type (func (param i32) (result i32)))
+
+  (func (type 0)
+    i32.const 11
+  )
+
+  (func (type 1)
+    local.get 0
+    call_indirect (type 0)
+  )
+
+  (func (param i32 i32) (result i32)
+    local.get 0
+    local.get 1
+    call_indirect (type 1)
+  )
+
+  (table 100 100 funcref)
+  (elem (i32.const 0) funcref (ref.func 0) (ref.func 1))
+)
+        "#,
+        r#"
+(module
+  (type (;0;) (func (result i32)))
+  (type (;1;) (func (param i32) (result i32)))
+  (type (;2;) (func (param i32 i32) (result i32)))
+  (func (;0;) (type 0) (result i32)
+    (local i32)
+    i32.const 11
+  )
+  (func (;1;) (type 1) (param i32) (result i32)
+    (local i32)
+    local.get 0
+    local.tee 1
+    i32.const 0
+    i32.eq
+    if (type 0) (result i32) ;; label = @1
+      i32.const 11
+    else
+      local.get 1
+      call_indirect (type 0)
+    end
+  )
+  (func (;2;) (type 2) (param i32 i32) (result i32)
+    (local i32 i32)
+    local.get 0
+    local.get 1
+    local.tee 2
+    i32.const 1
+    i32.eq
+    if (type 1) (param i32) (result i32) ;; label = @1
+      local.set 3
+      local.get 3
+      local.tee 2
+      i32.const 0
+      i32.eq
+      if (type 0) (result i32) ;; label = @2
+        i32.const 11
+      else
+        local.get 2
+        call_indirect (type 0)
+      end
+    else
+      local.get 2
+      call_indirect (type 1)
+    end
+  )
+  (table (;0;) 100 100 funcref)
+  (elem (;0;) (i32.const 0) funcref (ref.func 0) (ref.func 1))
+)
+        "#,
+    )
+}
 
 // TODO FITZGEN: too much inline depth
+#[test]
+fn reach_inline_depth_limit() -> Result<()> {
+    assert_optimize(
+        Optimizer::new().min_total_calls(1_000).max_inline_depth(1),
+        &[&[(0, 1_000)], &[(1, 1_000)]],
+        r#"
+(module
+  (type (func (result i32)))
+  (type (func (param i32) (result i32)))
 
-// TODO FITZGEN: indirect recursion
+  (func (type 0)
+    i32.const 11
+  )
 
-// TODO FITZGEN: inline function with multiple locals
+  (func (type 1)
+    local.get 0
+    call_indirect (type 0)
+  )
+
+  (func (param i32 i32) (result i32)
+    local.get 0
+    local.get 1
+    call_indirect (type 1)
+  )
+
+  (table 100 100 funcref)
+  (elem (i32.const 0) funcref (ref.func 0) (ref.func 1))
+)
+        "#,
+        r#"
+(module
+  (type (;0;) (func (result i32)))
+  (type (;1;) (func (param i32) (result i32)))
+  (type (;2;) (func (param i32 i32) (result i32)))
+  (func (;0;) (type 0) (result i32)
+    (local i32)
+    i32.const 11
+  )
+  (func (;1;) (type 1) (param i32) (result i32)
+    (local i32)
+    local.get 0
+    local.tee 1
+    i32.const 0
+    i32.eq
+    if (type 0) (result i32) ;; label = @1
+      i32.const 11
+    else
+      local.get 1
+      call_indirect (type 0)
+    end
+  )
+  (func (;2;) (type 2) (param i32 i32) (result i32)
+    (local i32 i32)
+    local.get 0
+    local.get 1
+    local.tee 2
+    i32.const 1
+    i32.eq
+    if (type 1) (param i32) (result i32) ;; label = @1
+      local.set 3
+      local.get 3
+      call_indirect (type 0)
+    else
+      local.get 2
+      call_indirect (type 1)
+    end
+  )
+  (table (;0;) 100 100 funcref)
+  (elem (;0;) (i32.const 0) funcref (ref.func 0) (ref.func 1))
+)
+        "#,
+    )
+}
+
+#[test]
+fn mutual_recursion() -> Result<()> {
+    assert_optimize(
+        Optimizer::new().min_total_calls(100).max_inline_depth(100),
+        &[&[(1, 100)], &[(0, 100)]],
+        r#"
+(module
+  (type (func (param i32 i32) (result i32)))
+
+  (func (type 0)
+    local.get 0
+    local.get 1
+    local.get 0
+    call_indirect (type 0)
+  )
+
+  (func (type 0)
+    local.get 0
+    local.get 1
+    local.get 1
+    call_indirect (type 0)
+  )
+
+  (table 100 100 funcref)
+  (elem (i32.const 0) funcref (ref.func 0) (ref.func 1))
+)
+        "#,
+        r#"
+(module
+  (type (;0;) (func (param i32 i32) (result i32)))
+  (func (;0;) (type 0) (param i32 i32) (result i32)
+    (local i32 i32 i32)
+    local.get 0
+    local.get 1
+    local.get 0
+    local.tee 2
+    i32.const 1
+    i32.eq
+    if (type 0) (param i32 i32) (result i32) ;; label = @1
+      local.set 4
+      local.set 3
+      local.get 3
+      local.get 4
+      local.get 4
+      call_indirect (type 0)
+    else
+      local.get 2
+      call_indirect (type 0)
+    end
+  )
+  (func (;1;) (type 0) (param i32 i32) (result i32)
+    (local i32 i32 i32)
+    local.get 0
+    local.get 1
+    local.get 1
+    local.tee 2
+    i32.const 0
+    i32.eq
+    if (type 0) (param i32 i32) (result i32) ;; label = @1
+      local.set 4
+      local.set 3
+      local.get 3
+      local.get 4
+      local.get 3
+      call_indirect (type 0)
+    else
+      local.get 2
+      call_indirect (type 0)
+    end
+  )
+  (table (;0;) 100 100 funcref)
+  (elem (;0;) (i32.const 0) funcref (ref.func 0) (ref.func 1))
+)
+        "#,
+    )
+}
+
+#[test]
+fn inline_a_function_with_many_locals() -> Result<()> {
+    assert_optimize(
+        Optimizer::new().min_total_calls(100),
+        &[&[(0, 100)]],
+        r#"
+(module
+  (type (func (result i32)))
+
+  (func (type 0) (local i32 i64 f32 f64 v128 externref funcref)
+    local.get 0
+  )
+
+  (func (param i32) (result i32)
+    (local funcref externref v128 f64 f32 i64 i32)
+    local.get 0
+    call_indirect (type 0)
+  )
+
+  (table 100 100 funcref)
+  (elem (i32.const 0) funcref (ref.func 0) (ref.func 1))
+)
+        "#,
+        r#"
+(module
+  (type (;0;) (func (result i32)))
+  (type (;1;) (func (param i32) (result i32)))
+  (func (;0;) (type 0) (result i32)
+    (local i32 i64 f32 f64 v128 externref funcref i32)
+    local.get 0
+  )
+  (func (;1;) (type 1) (param i32) (result i32)
+    (local funcref externref v128 f64 f32 i64 i32 i32 i32 i64 f32 f64 v128 externref funcref)
+    local.get 0
+    local.tee 8
+    i32.const 0
+    i32.eq
+    if (type 0) (result i32) ;; label = @1
+      local.get 9
+    else
+      local.get 8
+      call_indirect (type 0)
+    end
+  )
+  (table (;0;) 100 100 funcref)
+  (elem (;0;) (i32.const 0) funcref (ref.func 0) (ref.func 1))
+)
+        "#,
+    )
+}
 
 // TODO FITZGEN: probes for speculative hit/miss count
 

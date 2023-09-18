@@ -57,7 +57,7 @@ use anyhow::{anyhow, ensure, Context, Result};
 /// serde_json::to_writer(file, &my_profile)?;
 /// # Ok(()) }
 /// ```
-#[derive(Clone, Default)]
+#[derive(Clone, Debug, Default)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Profile {
     // Per-call site profiling information.
@@ -68,7 +68,7 @@ pub struct Profile {
     pub(crate) call_sites: BTreeMap<u32, CallSiteProfile>,
 }
 
-#[derive(Clone, Default)]
+#[derive(Clone, Debug, Default)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub(crate) struct CallSiteProfile {
     // The total count of indirect calls for this call site.

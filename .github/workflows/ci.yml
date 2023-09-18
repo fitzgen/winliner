@@ -48,3 +48,15 @@ jobs:
       run: rustup target add wasm32-unknown-unknown
     - name: Compile to Wasm
       run: cargo build --target wasm32-unknown-unknown
+
+  fuzz:
+    strategy:
+      matrix:
+        fuzz_target: ["diff", "instrument"]
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    - name: Install cargo-fuzz
+      run: cargo install cargo-fuzz
+    - name: Run fuzzer for five minutes
+      run: cargo fuzz run --sanitizer none ${{ matrix.fuzz_target }} -- -max_total_time=300

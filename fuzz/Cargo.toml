@@ -9,13 +9,21 @@ edition = "2021"
 cargo-fuzz = true
 
 [dependencies]
-libfuzzer-sys = "0.4"
+libfuzzer-sys = { version = "0.4", features = ["arbitrary-derive"] }
+wasm-smith = "0.12.15"
+wasmtime = "12.0.2"
 
 [dependencies.winliner]
 path = ".."
 
 [[bin]]
-name = "fuzz_target_1"
-path = "fuzz_targets/fuzz_target_1.rs"
+name = "diff"
+path = "fuzz_targets/diff.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "instrument"
+path = "fuzz_targets/instrument.rs"
 test = false
 doc = false

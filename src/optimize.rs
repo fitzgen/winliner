@@ -57,6 +57,21 @@ pub struct Optimizer {
     /// bodies during inlining.
     #[cfg_attr(feature = "clap", clap(long, default_value = "10"))]
     max_inline_depth: usize,
+
+    /// Emit counters for how often our speculative inlining guesses were
+    /// correct or incorrect.
+    ///
+    /// When this option is enabled, we will add two globals for each call site
+    /// where we winlined a speculative callee:
+    ///
+    /// 1. A counter for how many times we guessed correctly.
+    ///
+    /// 2. A counter for how many times we guessed incorrectly.
+    ///
+    /// You can extract this data when using Winliner as a library with the
+    /// `Counters` type.
+    #[cfg_attr(feature = "clap", clap(long))]
+    emit_counters: bool,
 }
 
 impl Default for Optimizer {
@@ -65,6 +80,7 @@ impl Default for Optimizer {
             min_total_calls: 1000,
             min_ratio: 0.9,
             max_inline_depth: 10,
+            emit_counters: false,
         }
     }
 }
@@ -104,6 +120,24 @@ impl Optimizer {
         self
     }
 
+    /// Whether to emit counters for how often our speculative inlining guesses
+    /// were correct or incorrect.
+    ///
+    /// When this option is enabled, we will add two globals for each call site
+    /// where we winlined a speculative callee:
+    ///
+    /// 1. A counter for how many times we guessed correctly.
+    ///
+    /// 2. A counter for how many times we guessed incorrectly.
+    ///
+    /// You can extract this data using the [`Counters`][crate::Counters] type.
+    ///
+    /// This option is `false` by default.
+    pub fn emit_counters(&mut self, emit: bool) -> &mut Self {
+        self.emit_counters = emit;
+        self
+    }
+
     /// Optimize the given Wasm binary.
     ///
     /// Callers must ensure that:
@@ -126,6 +160,7 @@ impl Optimizer {
         let mut parser = wasmparser::Parser::new(0);
 
         let mut context = OptimizeContext {
+            id_counter: 0,
             full_wasm: wasm,
             profile,
             num_imported_funcs: 0,
@@ -134,6 +169,16 @@ impl Optimizer {
             call_site_offsets: vec![],
             tables: TablesInfo::default(),
             func_bodies: vec![],
+            new_global_section: if self.emit_counters {
+                Some(wasm_encoder::GlobalSection::new())
+            } else {
+                None
+            },
+            new_export_section: if self.emit_counters {
+                Some(wasm_encoder::ExportSection::new())
+            } else {
+                None
+            },
         };
 
         // The list of `wasm_encoder` sections we will join together as the new,
@@ -225,19 +270,46 @@ impl Optimizer {
                     borrowed(&mut new_sections, context.full_wasm, tags, SectionId::Tag)
                 }
 
-                Payload::GlobalSection(globals) => borrowed(
-                    &mut new_sections,
-                    context.full_wasm,
-                    globals,
-                    SectionId::Global,
-                ),
+                Payload::GlobalSection(globals) => {
+                    if self.emit_counters {
+                        let new_global_section = context.new_global_section.as_mut().unwrap();
+                        for global in globals.into_iter() {
+                            let global = global?;
+                            new_global_section.global(
+                                crate::convert::global_type(global.ty),
+                                &crate::convert::const_expr(global.init_expr)?,
+                            );
+                        }
+                    } else {
+                        borrowed(
+                            &mut new_sections,
+                            context.full_wasm,
+                            globals,
+                            SectionId::Global,
+                        )
+                    }
+                }
 
-                Payload::ExportSection(exports) => borrowed(
-                    &mut new_sections,
-                    context.full_wasm,
-                    exports,
-                    SectionId::Export,
-                ),
+                Payload::ExportSection(exports) => {
+                    if self.emit_counters {
+                        let new_export_section = context.new_export_section.as_mut().unwrap();
+                        for export in exports.into_iter() {
+                            let export = export?;
+                            new_export_section.export(
+                                export.name,
+                                crate::convert::external_kind(export.kind),
+                                export.index,
+                            );
+                        }
+                    } else {
+                        borrowed(
+                            &mut new_sections,
+                            context.full_wasm,
+                            exports,
+                            SectionId::Export,
+                        )
+                    }
+                }
 
                 Payload::StartSection { func, range: _ } => owned(
                     &mut new_sections,
@@ -323,6 +395,26 @@ impl Optimizer {
         for section in &new_sections {
             use wasm_encoder::Section;
 
+            if context
+                .new_global_section
+                .as_ref()
+                .map_or(false, |s| s.id() < section.id())
+            {
+                let s = context.new_global_section.take().unwrap();
+                log::trace!("Appending section id: {}", s.id());
+                module.section(&s);
+            }
+
+            if context
+                .new_export_section
+                .as_ref()
+                .map_or(false, |s| s.id() < section.id())
+            {
+                let s = context.new_export_section.take().unwrap();
+                log::trace!("Appending section id: {}", s.id());
+                module.section(&s);
+            }
+
             if new_code_section.as_ref().map_or(false, |s| {
                 s.id() < section.id() && section.id() != SectionId::DataCount as u8
             }) {
@@ -356,7 +448,7 @@ impl Optimizer {
         }
 
         let mut new_code_section = wasm_encoder::CodeSection::new();
-        for (defined_func_index, body) in context.func_bodies.iter().cloned().enumerate() {
+        for (defined_func_index, body) in context.func_bodies.clone().into_iter().enumerate() {
             let func_type = context.funcs[defined_func_index];
             let defined_func_index = u32::try_from(defined_func_index).unwrap();
             let func = self.optimize_one_func_body(context, defined_func_index, func_type, body)?;
@@ -367,7 +459,7 @@ impl Optimizer {
 
     fn optimize_one_func_body<'a>(
         &self,
-        context: &OptimizeContext,
+        context: &mut OptimizeContext<'a, '_>,
         defined_func_index: u32,
         func_type: u32,
         func_body: wasmparser::FunctionBody<'a>,
@@ -413,6 +505,7 @@ impl Optimizer {
                 func_body,
                 ops,
                 call_indirect_info: None,
+                counters: None,
             }
         }];
 
@@ -458,6 +551,18 @@ impl Optimizer {
                             .expect("inlined function should have ended with `end` instruction");
 
                         new_insts.push(CowInst::Owned(wasm_encoder::Instruction::Else));
+
+                        if self.emit_counters {
+                            new_insts.push(CowInst::Owned(wasm_encoder::Instruction::GlobalGet(
+                                entry.counters.unwrap().1,
+                            )));
+                            new_insts.push(CowInst::Owned(wasm_encoder::Instruction::I64Const(1)));
+                            new_insts.push(CowInst::Owned(wasm_encoder::Instruction::I64Add));
+                            new_insts.push(CowInst::Owned(wasm_encoder::Instruction::GlobalSet(
+                                entry.counters.unwrap().1,
+                            )));
+                        }
+
                         new_insts.push(CowInst::Owned(wasm_encoder::Instruction::LocalGet(
                             temp_callee_local,
                         )));
@@ -555,7 +660,7 @@ impl Optimizer {
 
     fn try_enqueue_for_winlining<'a, 'b>(
         &self,
-        context: &OptimizeContext<'a, 'b>,
+        context: &mut OptimizeContext<'a, 'b>,
         on_stack: &HashSet<u32>,
         locals: &mut Vec<(u32, wasm_encoder::ValType)>,
         num_locals: &mut u32,
@@ -657,6 +762,55 @@ impl Optimizer {
             wasm_encoder::BlockType::FunctionType(type_index),
         )));
 
+        // If we are emitting counters, then create the counters for this
+        // winlining and add the increment for the correct-guess counter.
+        let counters = if self.emit_counters {
+            let id = context.next_id();
+            let new_global_section = context.new_global_section.as_mut().unwrap();
+            let new_export_section = context.new_export_section.as_mut().unwrap();
+
+            let correct = new_global_section.len();
+            new_global_section.global(
+                wasm_encoder::GlobalType {
+                    val_type: wasm_encoder::ValType::I64,
+                    mutable: true,
+                },
+                &wasm_encoder::ConstExpr::i64_const(0),
+            );
+            new_export_section.export(
+                &format!("__winliner_counter_{id}_correct"),
+                wasm_encoder::ExportKind::Global,
+                correct,
+            );
+
+            let incorrect = new_global_section.len();
+            new_global_section.global(
+                wasm_encoder::GlobalType {
+                    val_type: wasm_encoder::ValType::I64,
+                    mutable: true,
+                },
+                &wasm_encoder::ConstExpr::i64_const(0),
+            );
+            new_export_section.export(
+                &format!("__winliner_counter_{id}_incorrect"),
+                wasm_encoder::ExportKind::Global,
+                incorrect,
+            );
+
+            new_insts.push(CowInst::Owned(wasm_encoder::Instruction::GlobalGet(
+                correct,
+            )));
+            new_insts.push(CowInst::Owned(wasm_encoder::Instruction::I64Const(1)));
+            new_insts.push(CowInst::Owned(wasm_encoder::Instruction::I64Add));
+            new_insts.push(CowInst::Owned(wasm_encoder::Instruction::GlobalSet(
+                correct,
+            )));
+
+            Some((correct, incorrect))
+        } else {
+            None
+        };
+
         // The callee function assumes that its parameters are in
         // locals, but they are currently on the operand
         // stack. Therefore, we need to "spill" them from the
@@ -696,12 +850,20 @@ impl Optimizer {
                 type_index,
                 table_index,
             }),
+            counters,
         }))
     }
 }
 
 /// Common context needed when optimizing function bodies.
 struct OptimizeContext<'a, 'b> {
+    /// A counter for generating unique identifiers for each function inlining /
+    /// copying.
+    ///
+    /// Note that this is different from `StackEntry::call_site_index` since the
+    /// same call site can be inlined multiple times due to inline chaining.
+    id_counter: u32,
+
     /// The Wasm module's full bytes.
     full_wasm: &'a [u8],
 
@@ -728,6 +890,20 @@ struct OptimizeContext<'a, 'b> {
 
     /// The function bodies for this Wasm module.
     func_bodies: Vec<wasmparser::FunctionBody<'a>>,
+
+    /// The new global section we are building, when we are emitting counters.
+    new_global_section: Option<wasm_encoder::GlobalSection>,
+
+    /// The new export section we are building, when we are emitting counters.
+    new_export_section: Option<wasm_encoder::ExportSection>,
+}
+
+impl OptimizeContext<'_, '_> {
+    fn next_id(&mut self) -> u32 {
+        let id = self.id_counter;
+        self.id_counter += 1;
+        id
+    }
 }
 
 /// Information about a function we are currently copying/inlining.
@@ -761,6 +937,10 @@ struct StackEntry<'a> {
     /// The iterator of operators within the function we are currently
     /// copying/inlining.
     ops: std::iter::Peekable<wasmparser::OperatorsIteratorWithOffsets<'a>>,
+
+    /// The global indices for the counters for when we guess correctly and
+    /// incorrectly, respectively.
+    counters: Option<(u32, u32)>,
 }
 
 /// Information about a `call_indirect` call site for a stack entry.

@@ -747,7 +747,6 @@ fn inlining_into_inlined_function() -> Result<()> {
     )
 }
 
-// TODO FITZGEN: too much inline depth
 #[test]
 fn reach_inline_depth_limit() -> Result<()> {
     assert_optimize(
@@ -950,7 +949,65 @@ fn inline_a_function_with_many_locals() -> Result<()> {
     )
 }
 
-// TODO FITZGEN: probes for speculative hit/miss count
+#[test]
+fn counters() -> Result<()> {
+    assert_optimize(
+        Optimizer::new().min_total_calls(1).emit_counters(true),
+        &[&[(42, 1)]],
+        r#"
+(module
+  (type (;0;) (func (result i32)))
+  (type (;1;) (func (param i32) (result i32)))
+  (func (;0;) (type 0) (result i32)
+    i32.const 36
+  )
+  (func (;1;) (type 1) (param i32) (result i32)
+    local.get 0
+    call_indirect (type 0)
+  )
+  (table (;0;) 100 100 funcref)
+  (elem (;0;) (i32.const 42) funcref (ref.func 0))
+)
+        "#,
+        r#"
+(module
+  (type (;0;) (func (result i32)))
+  (type (;1;) (func (param i32) (result i32)))
+  (func (;0;) (type 0) (result i32)
+    (local i32)
+    i32.const 36
+  )
+  (func (;1;) (type 1) (param i32) (result i32)
+    (local i32)
+    local.get 0
+    local.tee 1
+    i32.const 42
+    i32.eq
+    if (type 0) (result i32) ;; label = @1
+      global.get 0
+      i64.const 1
+      i64.add
+      global.set 0
+      i32.const 36
+    else
+      global.get 1
+      i64.const 1
+      i64.add
+      global.set 1
+      local.get 1
+      call_indirect (type 0)
+    end
+  )
+  (table (;0;) 100 100 funcref)
+  (global (;0;) (mut i64) i64.const 0)
+  (global (;1;) (mut i64) i64.const 0)
+  (export "__winliner_counter_0_correct" (global 0))
+  (export "__winliner_counter_0_incorrect" (global 1))
+  (elem (;0;) (i32.const 42) funcref (ref.func 0))
+)
+        "#,
+    )
+}
 
 /// Tests for when we run optimization with bogus profiles.
 ///

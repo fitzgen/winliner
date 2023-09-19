@@ -1,4 +1,0 @@
-/target
-/Cargo.lock
-instrumented*.wasm
-optimized*.wasm

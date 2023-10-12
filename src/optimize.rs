@@ -508,6 +508,7 @@ impl Optimizer {
                 ops,
                 call_indirect_info: None,
                 counters: None,
+                label_depth_to_return_to: None,
             }
         }];
 
@@ -626,8 +627,17 @@ impl Optimizer {
                     )))
                 }
 
-                // TODO FITZGEN: return needs to become branches to exit the
-                // block, so we also need to count block nesting in this loop.
+                // Returns inside of inlined callees need to become branches out
+                // of the inline body -- not returns from the caller function.
+                Operator::Return => {
+                    new_insts.push(CowInst::Owned(
+                        if let Some(n) = entry.label_depth_to_return_to {
+                            wasm_encoder::Instruction::Br(n)
+                        } else {
+                            wasm_encoder::Instruction::Return
+                        },
+                    ));
+                }
 
                 // TODO(#9): Support `return_call` and `return_call_indirect`
                 Operator::ReturnCall { .. } => bail!("`return_call` is not currently supported"),
@@ -636,7 +646,27 @@ impl Optimizer {
                 }
 
                 // All other instructions can just be copied over!
-                _ => {
+                op => {
+                    // Bookkeeping to update `label_depth_to_return_to` as
+                    // necessary when we enter and exit control blocks.
+                    if let Some(n) = entry.label_depth_to_return_to.as_mut() {
+                        match op {
+                            Operator::Block { .. }
+                            | Operator::Loop { .. }
+                            | Operator::If { .. } => {
+                                *n += 1;
+                            }
+                            Operator::End => {
+                                // NB: has to be a saturating decrement because
+                                // all function bodies are terminated with an
+                                // `end` that didn't have a corresponding
+                                // `block` or whatever increment.
+                                *n = n.saturating_sub(1);
+                            }
+                            _ => {}
+                        }
+                    }
+
                     let start = offset;
 
                     // Find the start of the next instruction, aka
@@ -871,6 +901,7 @@ impl Optimizer {
                 table_index,
             }),
             counters,
+            label_depth_to_return_to: Some(0),
         }))
     }
 }
@@ -961,6 +992,15 @@ struct StackEntry<'a> {
     /// The global indices for the counters for when we guess correctly and
     /// incorrectly, respectively.
     counters: Option<(u32, u32)>,
+
+    /// When an inlined function wants to return, we don't want to actually emit
+    /// a `return` instruction since that will exit the root caller. Instead, we
+    /// need to translate that to `br N` where `N` is the number of labels in
+    /// this callee's inlined body. This `label_depth_to_return_to` field is
+    /// that `N`.
+    ///
+    /// `None` for the root caller.
+    label_depth_to_return_to: Option<u32>,
 }
 
 /// Information about a `call_indirect` call site for a stack entry.

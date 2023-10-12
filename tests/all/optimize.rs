@@ -952,7 +952,9 @@ fn inline_a_function_with_many_locals() -> Result<()> {
 #[test]
 fn counters() -> Result<()> {
     assert_optimize(
-        Optimizer::new().min_total_calls(1).emit_feedback_counters(true),
+        Optimizer::new()
+            .min_total_calls(1)
+            .emit_feedback_counters(true),
         &[&[(42, 1)]],
         r#"
 (module
@@ -1003,6 +1005,150 @@ fn counters() -> Result<()> {
   (global (;1;) (mut i64) i64.const 0)
   (export "__winliner_counter_0_correct" (global 0))
   (export "__winliner_counter_0_incorrect" (global 1))
+  (elem (;0;) (i32.const 42) funcref (ref.func 0))
+)
+        "#,
+    )
+}
+
+#[test]
+fn return_from_inlined_function_no_blocks() -> Result<()> {
+    assert_optimize(
+        Optimizer::new().min_total_calls(1),
+        &[&[(42, 1)]],
+        r#"
+(module
+  (type (;0;) (func (result i32)))
+  (type (;1;) (func (param i32) (result i32)))
+  (func (;0;) (type 0) (result i32)
+    i32.const 36
+    return
+  )
+  (func (;1;) (type 1) (param i32) (result i32)
+    local.get 0
+    call_indirect (type 0)
+  )
+  (table (;0;) 100 100 funcref)
+  (elem (;0;) (i32.const 42) funcref (ref.func 0))
+)
+        "#,
+        r#"
+(module
+  (type (;0;) (func (result i32)))
+  (type (;1;) (func (param i32) (result i32)))
+  (func (;0;) (type 0) (result i32)
+    (local i32)
+    i32.const 36
+    return
+  )
+  (func (;1;) (type 1) (param i32) (result i32)
+    (local i32)
+    local.get 0
+    local.tee 1
+    i32.const 42
+    i32.eq
+    if (type 0) (result i32) ;; label = @1
+      i32.const 36
+      br 0 (;@1;)
+    else
+      local.get 1
+      call_indirect (type 0)
+    end
+  )
+  (table (;0;) 100 100 funcref)
+  (elem (;0;) (i32.const 42) funcref (ref.func 0))
+)
+        "#,
+    )
+}
+
+#[test]
+fn return_from_inlined_function_nested_blocks() -> Result<()> {
+    assert_optimize(
+        Optimizer::new().min_total_calls(1),
+        &[&[(42, 1)]],
+        r#"
+(module
+  (type (;0;) (func (result i32)))
+  (type (;1;) (func (param i32) (result i32)))
+  (func (;0;) (type 0) (result i32)
+    block
+      loop
+        i32.const 1
+        if
+          i32.const 36
+          return
+        end
+      end
+    end
+    unreachable
+  )
+  (func (;1;) (type 1) (param i32) (result i32)
+    block
+      loop
+        i32.const 1
+        if
+          local.get 0
+          call_indirect (type 0)
+          return
+        end
+      end
+    end
+    unreachable
+  )
+  (table (;0;) 100 100 funcref)
+  (elem (;0;) (i32.const 42) funcref (ref.func 0))
+)
+        "#,
+        r#"
+(module
+  (type (;0;) (func (result i32)))
+  (type (;1;) (func (param i32) (result i32)))
+  (func (;0;) (type 0) (result i32)
+    (local i32)
+    block ;; label = @1
+      loop ;; label = @2
+        i32.const 1
+        if ;; label = @3
+          i32.const 36
+          return
+        end
+      end
+    end
+    unreachable
+  )
+  (func (;1;) (type 1) (param i32) (result i32)
+    (local i32)
+    block ;; label = @1
+      loop ;; label = @2
+        i32.const 1
+        if ;; label = @3
+          local.get 0
+          local.tee 1
+          i32.const 42
+          i32.eq
+          if (type 0) (result i32) ;; label = @4
+            block ;; label = @5
+              loop ;; label = @6
+                i32.const 1
+                if ;; label = @7
+                  i32.const 36
+                  br 3 (;@4;)
+                end
+              end
+            end
+            unreachable
+          else
+            local.get 1
+            call_indirect (type 0)
+          end
+          return
+        end
+      end
+    end
+    unreachable
+  )
+  (table (;0;) 100 100 funcref)
   (elem (;0;) (i32.const 42) funcref (ref.func 0))
 )
         "#,

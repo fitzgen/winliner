@@ -252,14 +252,16 @@ impl Instrumenter {
                             )?;
                         }
                     }
-                    for ty in types.into_iter() {
-                        let ty = ty?;
-                        let num_params = match ty.structural_type {
-                            wasmparser::StructuralType::Func(f) => f.params().len() as u32,
-                            wasmparser::StructuralType::Array(_)
-                            | wasmparser::StructuralType::Struct(_) => 0,
-                        };
-                        num_params_by_type.push(num_params);
+                    for rec_group in types.into_iter() {
+                        let rec_group = rec_group?;
+                        for ty in rec_group.types() {
+                            let num_params = match &ty.structural_type {
+                                wasmparser::StructuralType::Func(f) => f.params().len() as u32,
+                                wasmparser::StructuralType::Array(_)
+                                | wasmparser::StructuralType::Struct(_) => 0,
+                            };
+                            num_params_by_type.push(num_params);
+                        }
                     }
                 }
 
@@ -336,10 +338,8 @@ impl Instrumenter {
                         let new_global_section = new_global_section.as_mut().unwrap();
                         for global in globals.into_iter() {
                             let global = global?;
-                            new_global_section.global(
-                                crate::convert::global_type(global.ty),
-                                &crate::convert::const_expr(global.init_expr)?,
-                            );
+                            new_global_section
+                                .global(global.ty.into(), &global.init_expr.try_into()?);
                         }
                     }
                     InstrumentationStrategy::HostCalls => {
@@ -348,7 +348,7 @@ impl Instrumenter {
                             let global = global?;
 
                             new_global_section.global(
-                                crate::convert::global_type(global.ty),
+                                global.ty.into(),
                                 &crate::convert::const_expr_with_func_delta(
                                     global.init_expr,
                                     num_prepended_funcs,
@@ -366,7 +366,7 @@ impl Instrumenter {
                             let export = export?;
                             new_export_section.export(
                                 export.name,
-                                crate::convert::external_kind(export.kind),
+                                export.kind.into(),
                                 export.index,
                             );
                         }
@@ -441,7 +441,7 @@ impl Instrumenter {
                     for _ in 0..locals.get_count() {
                         let (count, ty) = locals.read()?;
                         num_locals += count;
-                        new_locals.push((count, crate::convert::val_type(ty)));
+                        new_locals.push((count, ty.into()));
                     }
 
                     // Add a new temporary local for storing the current callee.
@@ -733,8 +733,11 @@ fn precise_host_calls_new_type_section(
     let mut new_types = wasm_encoder::TypeSection::new();
 
     if let Some(types) = types {
-        for ty in types.into_iter() {
-            new_types.subtype(&crate::convert::sub_type(ty?));
+        for rec_group in types.into_iter() {
+            for ty in rec_group?.into_types() {
+                let ty: wasmparser::SubType = ty;
+                new_types.subtype(&ty.into());
+            }
         }
     }
 
@@ -764,7 +767,7 @@ fn precise_host_calls_new_import_section(
             new_imports.import(
                 import.module,
                 import.name,
-                crate::convert::type_ref(import.ty),
+                wasm_encoder::EntityType::from(import.ty),
             );
         }
     }
@@ -795,7 +798,7 @@ fn precise_host_calls_new_elements_section(
                         crate::convert::const_expr_with_func_delta(expr, num_prepended_funcs)
                     })
                     .collect::<Result<Vec<_>, _>>()?;
-                wasm_encoder::Elements::Expressions(crate::convert::ref_type(ref_ty), &exprs)
+                wasm_encoder::Elements::Expressions(ref_ty.into(), &exprs)
             }
         };
 
@@ -807,11 +810,7 @@ fn precise_host_calls_new_elements_section(
                 table_index,
                 offset_expr,
             } => {
-                new_elements.active(
-                    table_index,
-                    &crate::convert::const_expr(offset_expr)?,
-                    elements,
-                );
+                new_elements.active(table_index, &offset_expr.try_into()?, elements);
             }
             wasmparser::ElementKind::Declared => {
                 new_elements.declared(elements);

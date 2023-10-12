@@ -209,9 +209,10 @@ impl Optimizer {
                         tys.clone(),
                         SectionId::Type,
                     );
-                    for ty in tys.into_iter() {
-                        let ty = ty?;
-                        context.types.push(ty);
+                    for rec_group in tys.into_iter() {
+                        for ty in rec_group?.types() {
+                            context.types.push(ty.clone());
+                        }
                     }
                 }
 
@@ -275,10 +276,8 @@ impl Optimizer {
                         let new_global_section = context.new_global_section.as_mut().unwrap();
                         for global in globals.into_iter() {
                             let global = global?;
-                            new_global_section.global(
-                                crate::convert::global_type(global.ty),
-                                &crate::convert::const_expr(global.init_expr)?,
-                            );
+                            new_global_section
+                                .global(global.ty.into(), &global.init_expr.try_into()?);
                         }
                     } else {
                         borrowed(
@@ -297,7 +296,7 @@ impl Optimizer {
                             let export = export?;
                             new_export_section.export(
                                 export.name,
-                                crate::convert::external_kind(export.kind),
+                                export.kind.into(),
                                 export.index,
                             );
                         }
@@ -474,9 +473,25 @@ impl Optimizer {
         for local in func_body.get_locals_reader()?.into_iter() {
             let (count, ty) = local?;
             num_locals += count;
-            locals.push((count, crate::convert::val_type(ty)));
+            locals.push((count, ty.into()));
         }
 
+        // TODO FITZGEN: temp can be clobbered with chained inlining, switch to
+        // following:
+        //
+        // local.tee $temp
+        // local.get $temp
+        // i32.const ...
+        // i32.eq
+        // if  ;; need new type for extra stack arg
+        //   drop ;; extra $temp
+        //   <inlined body>
+        // else
+        //   call_indirect
+        // end
+        //
+        // or add a new temp per stack entry.
+        //
         // Add our temporary local where we save a copy of indirect callee
         // indices.
         let temp_callee_local = num_locals;
@@ -624,6 +639,11 @@ impl Optimizer {
                     )))
                 }
 
+                // TODO FITZGEN: return needs to become branches to exit the
+                // block, so we also need to count block nesting in this loop.
+
+                // TODO FITZGEN: return call disallow for now, file issue.
+
                 // All other instructions can just be copied over!
                 _ => {
                     let start = offset;
@@ -727,6 +747,7 @@ impl Optimizer {
 
         // ... then we can winline this callee and push it onto our stack!
 
+        // TODO FITZGEN: checked sub and unwrap
         let defined_func_index = callee_func_index - context.num_imported_funcs;
         let locals_delta = *num_locals;
         let func_body = context.func_bodies[usize::try_from(defined_func_index).unwrap()].clone();
@@ -823,7 +844,7 @@ impl Optimizer {
 
         // First, create the locals for the parameters in order.
         for param_ty in ty.params() {
-            locals.push((1, crate::convert::val_type(*param_ty)));
+            locals.push((1, (*param_ty).into()));
             *num_locals += 1;
         }
 
@@ -836,7 +857,7 @@ impl Optimizer {
         for l in func_body.get_locals_reader()?.into_iter() {
             let (count, ty) = l?;
             *num_locals += count;
-            locals.push((count, crate::convert::val_type(ty)));
+            locals.push((count, ty.into()));
         }
 
         Ok(Some(StackEntry {

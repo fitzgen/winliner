@@ -191,13 +191,25 @@ impl Counters {
     }
 
     /// Get the total ratio of correct guesses in this set of counters.
-    pub fn total_correct_ratio(&self) -> f64 {
-        self.total_correct as f64 / self.total() as f64
+    ///
+    /// Returns `None` when `self.total() == 0`.
+    pub fn total_correct_ratio(&self) -> Option<f64> {
+        if self.total() > 0 {
+            Some(self.total_correct as f64 / self.total() as f64)
+        } else {
+            None
+        }
     }
 
     /// Get the total ratio of incorrect guesses in this set of counters.
-    pub fn total_incorrect_ratio(&self) -> f64 {
-        self.total_incorrect as f64 / self.total() as f64
+    ///
+    /// Returns `None` when `self.total() == 0`.
+    pub fn total_incorrect_ratio(&self) -> Option<f64> {
+        if self.total() > 0 {
+            Some(self.total_incorrect as f64 / self.total() as f64)
+        } else {
+            None
+        }
     }
 }
 
@@ -220,12 +232,24 @@ impl Counter {
     }
 
     /// The ratio of correct guesses.
-    pub fn correct_ratio(&self) -> f64 {
-        self.correct as f64 / self.total() as f64
+    ///
+    /// Returns `None` when `self.total() == 0`.
+    pub fn correct_ratio(&self) -> Option<f64> {
+        if self.total() > 0 {
+            Some(self.correct as f64 / self.total() as f64)
+        } else {
+            None
+        }
     }
 
     /// The ratio of incorrect guesses.
-    pub fn incorrect_ratio(&self) -> f64 {
-        self.incorrect as f64 / self.total() as f64
+    ///
+    /// Returns `None` when `self.total() == 0`.
+    pub fn incorrect_ratio(&self) -> Option<f64> {
+        if self.total() > 0 {
+            Some(self.incorrect as f64 / self.total() as f64)
+        } else {
+            None
+        }
     }
 }

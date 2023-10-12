@@ -1,4 +1,4 @@
-use anyhow::{Context, Result};
+use anyhow::{ensure, Context, Result};
 use clap::Parser;
 use std::io::Write;
 use std::path::PathBuf;
@@ -202,6 +202,11 @@ fn profile(command: ProfileCommand) -> Result<()> {
             Box::new(std::io::BufWriter::new(std::fs::File::create(path)?))
         }
         None => {
+            ensure!(
+                !command.inherit_stdio,
+                "Cannot both inherit stdio and print profile to stdout; either do not pass \
+                 `--inherit-stdio`, or specify an output file for the profile with `-o my-file`."
+            );
             output_name = "stdout".to_string();
             stdout = std::io::stdout();
             let stdout = stdout.lock();

@@ -62,11 +62,13 @@ else
 end
 ```
 
-The speculative inlining by itself is not a huge performance win, since CPU
-indirect branch prediction is very powerful these days. However, it allows the
-Wasm compiler to "see through" the indirect call and perform subsequent
-optimizations (like [GVN] and [LICM]) on the inlined callee's body, which can
-result in significant performance benefits.
+The speculative inlining by itself is generally not a huge performance win,
+since CPU indirect branch prediction is very powerful these days. (Although,
+depending on the Wasm engine, entering a new function may incur some cost and
+inlining does avoid that.) The primary benefit is that it allows the Wasm
+compiler to "see through" the indirect call and perform subsequent optimizations
+(like [GVN] and [LICM]) on the inlined callee's body, which can result in
+significant performance benefits.
 
 [GVN]: https://en.wikipedia.org/wiki/Value_numbering#Global_value_numbering
 [LICM]: https://en.wikipedia.org/wiki/Loop-invariant_code_motion

@@ -167,7 +167,7 @@ impl Optimizer {
             num_imported_funcs: 0,
             types: vec![],
             funcs: vec![],
-            call_site_offsets: vec![],
+            first_call_site_offset_for_func: vec![],
             tables: TablesInfo::default(),
             func_bodies: vec![],
             new_global_section: if self.emit_feedback_counters {
@@ -438,7 +438,7 @@ impl Optimizer {
     ) -> Result<wasm_encoder::CodeSection> {
         let mut call_site_index = 0;
         for body in context.func_bodies.iter() {
-            context.call_site_offsets.push(call_site_index);
+            context.first_call_site_offset_for_func.push(call_site_index);
             for op in body.get_operators_reader()?.into_iter() {
                 match op? {
                     wasmparser::Operator::CallIndirect { .. } => call_site_index += 1,
@@ -514,7 +514,7 @@ impl Optimizer {
                 .into_iter_with_offsets()
                 .peekable();
             StackEntry {
-                call_site_index: context.call_site_offsets
+                call_site_index: context.first_call_site_offset_for_func
                     [usize::try_from(defined_func_index).unwrap()],
                 defined_func_index,
                 locals_delta: 0,
@@ -863,7 +863,7 @@ impl Optimizer {
 
         Ok(Some(StackEntry {
             defined_func_index,
-            call_site_index: context.call_site_offsets
+            call_site_index: context.first_call_site_offset_for_func
                 [usize::try_from(defined_func_index).unwrap()],
             locals_delta,
             func_body,
@@ -905,7 +905,7 @@ struct OptimizeContext<'a, 'b> {
     /// A map from defined function index to the call site index offset for that
     /// function (i.e. the count of how many `call_indirect` instructions
     /// appeared in the code section before this function body).
-    call_site_offsets: Vec<u32>,
+    first_call_site_offset_for_func: Vec<u32>,
 
     /// The static information we have about the tables present in the module.
     tables: TablesInfo,

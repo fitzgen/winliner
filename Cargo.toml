@@ -1,0 +1,54 @@
+[package]
+authors = ["Nick Fitzgerald <fitzgen@gmail.com>"]
+categories = ["command-line-utilities", "development-tools", "wasm"]
+description = "The WebAssembly Indirect Call Inliner"
+documentation = "https://docs.rs/winliner"
+edition = "2021"
+exclude = ["**.wasm"]
+homepage = "https://github.com/fitzgen/winliner"
+license = "Apache-2.0 WITH LLVM-exception"
+name = "winliner"
+readme = "./README.md"
+repository = "https://github.com/fitzgen/winliner"
+version = "1.0.0"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[[bin]]
+name = "winliner"
+required-features = [
+  "clap",
+  "env_logger",
+  "serde",
+  "serde_json",
+  "wasi-cap-std-sync",
+  "wasmtime",
+  "wasmtime-wasi",
+]
+
+[dependencies]
+anyhow = "1.0.75"
+clap = { version = "4.3.22", features = ["derive"], optional = true }
+env_logger = { version = "0.10.0", optional = true }
+log = "0.4.20"
+serde = { version = "1", optional = true }
+serde_json = { version = "1", optional = true }
+wasi-cap-std-sync = { version = "11.0.1", optional = true }
+wasm-encoder = { version = "0.34.1", features = ["wasmparser"] }
+wasmparser = "0.114.0"
+wasmtime = { version = "11.0.1", optional = true }
+wasmtime-wasi = { version = "11.0.1", optional = true }
+
+[dev-dependencies]
+diff = "0.1.13"
+env_logger = "0.10.0"
+serde = "1"
+serde_json = "1"
+wasmprinter = "0.2.62"
+wasmtime = "11.0.1"
+wat = "1.0.75"
+
+[workspace]
+members = [
+  "fuzz",
+]

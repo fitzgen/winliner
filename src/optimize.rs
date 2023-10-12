@@ -58,8 +58,8 @@ pub struct Optimizer {
     #[cfg_attr(feature = "clap", clap(long, default_value = "1"))]
     max_inline_depth: usize,
 
-    /// Emit counters for how often our speculative inlining guesses were
-    /// correct or incorrect.
+    /// Emit feedback counters for how often our speculative inlining guesses
+    /// were correct or incorrect.
     ///
     /// When this option is enabled, we will add two globals for each call site
     /// where we winlined a speculative callee:
@@ -69,9 +69,9 @@ pub struct Optimizer {
     /// 2. A counter for how many times we guessed incorrectly.
     ///
     /// You can extract this data when using Winliner as a library with the
-    /// `Counters` type.
+    /// `FeedbackCounters` type.
     #[cfg_attr(feature = "clap", clap(long))]
-    emit_counters: bool,
+    emit_feedback_counters: bool,
 }
 
 impl Default for Optimizer {
@@ -80,7 +80,7 @@ impl Default for Optimizer {
             min_total_calls: 1000,
             min_ratio: 0.9,
             max_inline_depth: 1,
-            emit_counters: false,
+            emit_feedback_counters: false,
         }
     }
 }
@@ -120,8 +120,8 @@ impl Optimizer {
         self
     }
 
-    /// Whether to emit counters for how often our speculative inlining guesses
-    /// were correct or incorrect.
+    /// Whether to emit feedback counters for how often our speculative inlining
+    /// guesses were correct or incorrect.
     ///
     /// When this option is enabled, we will add two globals for each call site
     /// where we winlined a speculative callee:
@@ -130,11 +130,12 @@ impl Optimizer {
     ///
     /// 2. A counter for how many times we guessed incorrectly.
     ///
-    /// You can extract this data using the [`Counters`][crate::Counters] type.
+    /// You can extract this data using the
+    /// [`FeedbackCounters`][crate::FeedbackCounters] type.
     ///
     /// This option is `false` by default.
-    pub fn emit_counters(&mut self, emit: bool) -> &mut Self {
-        self.emit_counters = emit;
+    pub fn emit_feedback_counters(&mut self, emit: bool) -> &mut Self {
+        self.emit_feedback_counters = emit;
         self
     }
 
@@ -169,12 +170,12 @@ impl Optimizer {
             call_site_offsets: vec![],
             tables: TablesInfo::default(),
             func_bodies: vec![],
-            new_global_section: if self.emit_counters {
+            new_global_section: if self.emit_feedback_counters {
                 Some(wasm_encoder::GlobalSection::new())
             } else {
                 None
             },
-            new_export_section: if self.emit_counters {
+            new_export_section: if self.emit_feedback_counters {
                 Some(wasm_encoder::ExportSection::new())
             } else {
                 None
@@ -272,7 +273,7 @@ impl Optimizer {
                 }
 
                 Payload::GlobalSection(globals) => {
-                    if self.emit_counters {
+                    if self.emit_feedback_counters {
                         let new_global_section = context.new_global_section.as_mut().unwrap();
                         for global in globals.into_iter() {
                             let global = global?;
@@ -290,7 +291,7 @@ impl Optimizer {
                 }
 
                 Payload::ExportSection(exports) => {
-                    if self.emit_counters {
+                    if self.emit_feedback_counters {
                         let new_export_section = context.new_export_section.as_mut().unwrap();
                         for export in exports.into_iter() {
                             let export = export?;
@@ -567,7 +568,7 @@ impl Optimizer {
 
                         new_insts.push(CowInst::Owned(wasm_encoder::Instruction::Else));
 
-                        if self.emit_counters {
+                        if self.emit_feedback_counters {
                             new_insts.push(CowInst::Owned(wasm_encoder::Instruction::GlobalGet(
                                 entry.counters.unwrap().1,
                             )));
@@ -785,7 +786,7 @@ impl Optimizer {
 
         // If we are emitting counters, then create the counters for this
         // winlining and add the increment for the correct-guess counter.
-        let counters = if self.emit_counters {
+        let counters = if self.emit_feedback_counters {
             let id = context.next_id();
             let new_global_section = context.new_global_section.as_mut().unwrap();
             let new_export_section = context.new_export_section.as_mut().unwrap();

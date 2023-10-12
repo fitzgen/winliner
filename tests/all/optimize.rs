@@ -952,7 +952,7 @@ fn inline_a_function_with_many_locals() -> Result<()> {
 #[test]
 fn counters() -> Result<()> {
     assert_optimize(
-        Optimizer::new().min_total_calls(1).emit_counters(true),
+        Optimizer::new().min_total_calls(1).emit_feedback_counters(true),
         &[&[(42, 1)]],
         r#"
 (module

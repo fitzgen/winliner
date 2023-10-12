@@ -9,7 +9,7 @@ mod optimize;
 mod profile;
 
 pub use anyhow::Result;
-pub use counters::{Counter, Counters};
+pub use counters::{FeedbackCounter, FeedbackCounters};
 pub use instrument::{InstrumentationStrategy, Instrumenter};
 pub use optimize::Optimizer;
 pub use profile::{Profile, ProfileBuilder};

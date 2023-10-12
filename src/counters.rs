@@ -2,7 +2,7 @@
 
 use anyhow::{anyhow, ensure, Result};
 
-/// Counters for how often speculative inlining guesses were correct or
+/// Feedback counters for how often speculative inlining guesses were correct or
 /// incorrect.
 ///
 /// After speculatively inlining a callee at a `call_indirect` site, you may
@@ -13,25 +13,25 @@ use anyhow::{anyhow, ensure, Result};
 /// This type counts how often each `call_indirect`'s target was correctly or
 /// incorrectly guessed.
 ///
-/// Construction of a `Counters` relies on the
-/// [`emit_counters`][crate::Optimizer::emit_counters] option being enabled when
-/// you generated the optimized Wasm. If they were not enabled, then you'll get
-/// an empty set of counters.
+/// Construction of a `FeedbackCounters` relies on the
+/// [`emit_feedback_counters`][crate::Optimizer::emit_feedback_counters] option
+/// being enabled when you generated the optimized Wasm. If they were not
+/// enabled, then you'll get an empty set of counters.
 ///
-/// ## Serializing and Deserializing `Counters`
+/// ## Serializing and Deserializing `FeedbackCounters`
 ///
-/// When the `serde` cargo feature is enabled, `Counters` implements
+/// When the `serde` cargo feature is enabled, `FeedbackCounters` implements
 /// `serde::Serialize` and `serde::Deserialize`:
 ///
 /// ```
 /// # fn foo() -> anyhow::Result<()> {
 /// #![cfg(feature = "serde")]
 ///
-/// use winliner::Counters;
+/// use winliner::FeedbackCounters;
 ///
 /// // Read counters in from disk.
 /// let file = std::fs::File::open("path/to/my/counters.json")?;
-/// let my_counters: Counters = serde_json::from_reader(file)?;
+/// let my_counters: FeedbackCounters = serde_json::from_reader(file)?;
 ///
 /// // Write counters out to disk.
 /// let file = std::fs::File::create("path/to/new/counters.json")?;
@@ -40,8 +40,8 @@ use anyhow::{anyhow, ensure, Result};
 /// ```
 #[derive(Default)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub struct Counters {
-    counters: Vec<Counter>,
+pub struct FeedbackCounters {
+    counters: Vec<FeedbackCounter>,
     total_correct: u64,
     total_incorrect: u64,
 }
@@ -49,19 +49,20 @@ pub struct Counters {
 /// How often a single speculative inlining call site was guessed correctly or
 /// incorrectly.
 ///
-/// See [`Counters`][crate::Counters] for more details.
+/// See [`FeedbackCounters`][crate::FeedbackCounters] for more details.
 #[derive(Clone, Copy)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub struct Counter {
+pub struct FeedbackCounter {
     correct: u64,
     incorrect: u64,
 }
 
-impl Counters {
+impl FeedbackCounters {
     /// Extract counters from an optimized Wasm program.
     ///
     /// The program must have been optimized by Winliner with the
-    /// [`emit_counters`][crate::Optimizer::emit_counters] option enabled.
+    /// [`emit_feedback_counters`][crate::Optimizer::emit_feedback_counters]
+    /// option enabled.
     ///
     /// To avoid a public dependency on any particular version of Wasmtime (or
     /// any other Wasm runtime for that matter) this method takes a callback
@@ -75,7 +76,7 @@ impl Counters {
     /// ```
     /// # fn foo() -> wasmtime::Result<()> {
     /// use wasmtime::{Instance, Module, Store, Val};
-    /// use winliner::Counters;
+    /// use winliner::FeedbackCounters;
     ///
     /// // Instantiate your optimized Wasm module.
     /// let mut store = Store::<()>::default();
@@ -87,7 +88,7 @@ impl Counters {
     /// run(&mut store, instance)?;
     ///
     /// // Extract the counters from the instance.
-    /// let counters = Counters::from_instance(|name| {
+    /// let counters = FeedbackCounters::from_instance(|name| {
     ///     match instance.get_global(&mut store, name)?.get(&mut store) {
     ///         Val::I64(x) => Some(x as u64),
     ///         _ => None,
@@ -114,10 +115,10 @@ impl Counters {
                 })?;
             total_incorrect = total_incorrect.saturating_add(incorrect);
 
-            counters.push(Counter { correct, incorrect });
+            counters.push(FeedbackCounter { correct, incorrect });
         }
 
-        Ok(Counters {
+        Ok(FeedbackCounters {
             counters,
             total_correct,
             total_incorrect,
@@ -133,16 +134,16 @@ impl Counters {
     /// ```
     /// # fn foo() -> anyhow::Result<()> {
     /// use wasmtime::{Engine, Module};
-    /// use winliner::Counters;
+    /// use winliner::FeedbackCounters;
     ///
     /// // Load the optimized Wasm module.
     /// let engine = Engine::default();
     /// let module = Module::from_file(&engine, "path/to/optimized.wasm")?;
     ///
     /// // Run the Wasm a couple times.
-    /// # let run_and_get_counters = |_| -> anyhow::Result<Counters> { unimplemented!() };
-    /// let mut counters1 = run_and_get_counters(&module)?;
-    /// let counters2 = run_and_get_counters(&module)?;
+    /// # let run_and_get_counters = |_| -> anyhow::Result<FeedbackCounters> { unimplemented!() };
+    /// let mut counters1: FeedbackCounters = run_and_get_counters(&module)?;
+    /// let counters2: FeedbackCounters = run_and_get_counters(&module)?;
     ///
     /// // Finally, combine the two sets of counters into a single set.
     /// counters1.merge(&counters2);
@@ -169,7 +170,7 @@ impl Counters {
     ///
     /// You can use this to check for whether any speculative inlining has too
     /// high of an incorrect guess rate.
-    pub fn counters(&self) -> &[Counter] {
+    pub fn counters(&self) -> &[FeedbackCounter] {
         &self.counters
     }
 
@@ -213,7 +214,7 @@ impl Counters {
     }
 }
 
-impl Counter {
+impl FeedbackCounter {
     /// The number of times we guessed correctly for this speculative inlining.
     pub fn correct(&self) -> u64 {
         self.correct

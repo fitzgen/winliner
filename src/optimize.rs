@@ -629,7 +629,11 @@ impl Optimizer {
                 // TODO FITZGEN: return needs to become branches to exit the
                 // block, so we also need to count block nesting in this loop.
 
-                // TODO FITZGEN: return call disallow for now, file issue.
+                // TODO(#9): Support `return_call` and `return_call_indirect`
+                Operator::ReturnCall { .. } => bail!("`return_call` is not currently supported"),
+                Operator::ReturnCallIndirect { .. } => {
+                    bail!("`return_call_indirect` is not currently supported")
+                }
 
                 // All other instructions can just be copied over!
                 _ => {

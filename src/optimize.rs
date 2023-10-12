@@ -438,7 +438,9 @@ impl Optimizer {
     ) -> Result<wasm_encoder::CodeSection> {
         let mut call_site_index = 0;
         for body in context.func_bodies.iter() {
-            context.first_call_site_offset_for_func.push(call_site_index);
+            context
+                .first_call_site_offset_for_func
+                .push(call_site_index);
             for op in body.get_operators_reader()?.into_iter() {
                 match op? {
                     wasmparser::Operator::CallIndirect { .. } => call_site_index += 1,
@@ -477,22 +479,6 @@ impl Optimizer {
             locals.push((count, ty.into()));
         }
 
-        // TODO FITZGEN: temp can be clobbered with chained inlining, switch to
-        // following:
-        //
-        // local.tee $temp
-        // local.get $temp
-        // i32.const ...
-        // i32.eq
-        // if  ;; need new type for extra stack arg
-        //   drop ;; extra $temp
-        //   <inlined body>
-        // else
-        //   call_indirect
-        // end
-        //
-        // or add a new temp per stack entry.
-        //
         // Add our temporary local where we save a copy of indirect callee
         // indices.
         let temp_callee_local = num_locals;
@@ -748,8 +734,9 @@ impl Optimizer {
 
         // ... then we can winline this callee and push it onto our stack!
 
-        // TODO FITZGEN: checked sub and unwrap
-        let defined_func_index = callee_func_index - context.num_imported_funcs;
+        let defined_func_index = callee_func_index
+            .checked_sub(context.num_imported_funcs)
+            .unwrap();
         let locals_delta = *num_locals;
         let func_body = context.func_bodies[usize::try_from(defined_func_index).unwrap()].clone();
         let ops = func_body
@@ -773,6 +760,13 @@ impl Optimizer {
         //       local.get $temp_callee_local
         //       call_indirect
         //     end
+        //
+        // Note that it might seem like nested inlining might clobber
+        // `temp_callee_local`, but it is actually not live in the `if` body,
+        // only in the `else` body. Therefore, if nested inlining clobbers the
+        // local, it is actually okay, since it won't be read again be this call
+        // site. And if it is going to be read again by this call site, then we
+        // aren't executing the inline body, and so it can't be clobbered.
         new_insts.push(CowInst::Owned(wasm_encoder::Instruction::LocalTee(
             temp_callee_local,
         )));

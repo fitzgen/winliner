@@ -86,8 +86,7 @@ mod three_globals {
     global.set 0
     local.tee 1
     global.get 1
-    i32.eq
-    i32.eqz
+    i32.ne
     if ;; label = @1
       local.get 1
       global.set 1
@@ -144,8 +143,7 @@ mod three_globals {
     global.set 0
     local.tee 1
     global.get 1
-    i32.eq
-    i32.eqz
+    i32.ne
     if ;; label = @1
       local.get 1
       global.set 1
@@ -165,8 +163,7 @@ mod three_globals {
     global.set 3
     local.tee 1
     global.get 4
-    i32.eq
-    i32.eqz
+    i32.ne
     if ;; label = @1
       local.get 1
       global.set 4
@@ -186,8 +183,7 @@ mod three_globals {
     global.set 6
     local.tee 1
     global.get 7
-    i32.eq
-    i32.eqz
+    i32.ne
     if ;; label = @1
       local.get 1
       global.set 7
@@ -256,8 +252,7 @@ mod three_globals {
     global.set 0
     local.tee 1
     global.get 1
-    i32.eq
-    i32.eqz
+    i32.ne
     if ;; label = @1
       local.get 1
       global.set 1
@@ -280,8 +275,7 @@ mod three_globals {
     global.set 3
     local.tee 1
     global.get 4
-    i32.eq
-    i32.eqz
+    i32.ne
     if ;; label = @1
       local.get 1
       global.set 4
@@ -425,8 +419,7 @@ mod three_globals {
     global.set 1
     local.tee 1
     global.get 2
-    i32.eq
-    i32.eqz
+    i32.ne
     if ;; label = @1
       local.get 1
       global.set 2
@@ -481,8 +474,7 @@ mod three_globals {
     global.set 0
     local.tee 1
     global.get 1
-    i32.eq
-    i32.eqz
+    i32.ne
     if ;; label = @1
       local.get 1
       global.set 1
@@ -537,8 +529,7 @@ mod three_globals {
     global.set 0
     local.tee 2
     global.get 1
-    i32.eq
-    i32.eqz
+    i32.ne
     if ;; label = @1
       local.get 2
       global.set 1

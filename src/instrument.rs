@@ -17,7 +17,8 @@ pub struct Instrumenter {
     /// By default, Winliner will reject Wasm programs that mutate `funcref`
     /// tables, since that can lead to divergence between the original and
     /// winlined version of the program. This flag lets you pinky promise that
-    /// actually it is okay in this particular case.
+    /// actually it is okay in this particular case (e.g. the program never
+    /// indirectly calls a modified table element).
     #[cfg_attr(feature = "clap", clap(long))]
     allow_table_mutation: bool,
 
@@ -28,7 +29,9 @@ pub struct Instrumenter {
     /// Winliner doesn't definitively know which function `table[N]` is, it
     /// can't be sure that it is inlining the right function. This flag lets you
     /// pinky promise that a non-const offset table element isn't going to lead
-    /// to divergence and misoptimization.
+    /// to divergence and misoptimization (e.g. the program never indirectly
+    /// calls a table element that is initialized by or overwritten by a
+    /// dynamically initialized table element).
     #[cfg_attr(feature = "clap", clap(long))]
     allow_arbitrary_element_offsets: bool,
 
@@ -80,7 +83,8 @@ impl Instrumenter {
     /// By default, Winliner will reject Wasm programs that mutate `funcref`
     /// tables, since that can lead to divergence between the original and
     /// winlined version of the program. This method lets you pinky promise that
-    /// actually it is okay in this particular case.
+    /// actually it is okay in this particular case (e.g. the program never
+    /// indirectly calls a modified table element).
     pub fn allow_table_mutation(&mut self, allow: bool) -> &mut Self {
         self.allow_table_mutation = allow;
         self
@@ -93,7 +97,9 @@ impl Instrumenter {
     /// Winliner doesn't definitively know which function `table[N]` is, it
     /// can't be sure that it is inlining the right function. This method lets
     /// you pinky promise that a non-const offset table element isn't going to
-    /// lead to divergence and misoptimization.
+    /// lead to divergence and misoptimization (e.g. the program never
+    /// indirectly calls a table element that is initialized by or overwritten
+    /// by a dynamically initialized table element).
     pub fn allow_arbitrary_element_offsets(&mut self, allow: bool) -> &mut Self {
         self.allow_arbitrary_element_offsets = allow;
         self
@@ -552,8 +558,7 @@ impl Instrumenter {
                                         // ;; }
                                         // local.tee $current_callee
                                         // global.get $last_callee
-                                        // i32.eq
-                                        // i32.eqz
+                                        // i32.ne
                                         // if
                                         //     local.get $current_callee
                                         //     global.set $last_callee
@@ -585,8 +590,7 @@ impl Instrumenter {
                                             .instruction(&wasm_encoder::Instruction::GlobalGet(
                                                 last_callee_global,
                                             ))
-                                            .instruction(&wasm_encoder::Instruction::I32Eq)
-                                            .instruction(&wasm_encoder::Instruction::I32Eqz)
+                                            .instruction(&wasm_encoder::Instruction::I32Ne)
                                             .instruction(&wasm_encoder::Instruction::If(
                                                 wasm_encoder::BlockType::Empty,
                                             ))

@@ -72,6 +72,16 @@ pub struct Optimizer {
     /// `FeedbackCounters` type.
     #[cfg_attr(feature = "clap", clap(long))]
     emit_feedback_counters: bool,
+
+    /// Set the maximum optimization fuel.
+    ///
+    /// This option is useful for Winliner developers, and unlikely to be useful
+    /// to anyone else.
+    ///
+    /// Allows bisecting optimization bugs to find which optimization site is
+    /// buggy.
+    #[cfg_attr(feature = "clap", clap(long))]
+    fuel: Option<u32>,
 }
 
 impl Default for Optimizer {
@@ -81,6 +91,7 @@ impl Default for Optimizer {
             min_ratio: 0.9,
             max_inline_depth: 1,
             emit_feedback_counters: false,
+            fuel: None,
         }
     }
 }
@@ -139,6 +150,18 @@ impl Optimizer {
         self
     }
 
+    /// Set the maximum optimization fuel.
+    ///
+    /// This option is useful for Winliner developers, and unlikely to be useful
+    /// to anyone else.
+    ///
+    /// Allows bisecting optimization bugs to find which optimization site is
+    /// buggy.
+    pub fn fuel(&mut self, fuel: Option<u32>) -> &mut Self {
+        self.fuel = fuel;
+        self
+    }
+
     /// Optimize the given Wasm binary.
     ///
     /// Callers must ensure that:
@@ -161,6 +184,7 @@ impl Optimizer {
         let mut parser = wasmparser::Parser::new(0);
 
         let mut context = OptimizeContext {
+            fuel: self.fuel,
             id_counter: 0,
             full_wasm: wasm,
             profile,
@@ -711,6 +735,15 @@ impl Optimizer {
         table_index: u32,
         type_index: u32,
     ) -> Result<Option<StackEntry<'a>>> {
+        // Check whether we have enough fuel to perform this winlining, and
+        // consume one unit of fuel if we do.
+        if let Some(fuel) = context.fuel.as_mut() {
+            if *fuel == 0 {
+                return Ok(None);
+            }
+            *fuel -= 1;
+        }
+
         // If we haven't already reached our maximum inlining depth...
         if (on_stack.len() - 1) >= self.max_inline_depth {
             return Ok(None);
@@ -908,6 +941,9 @@ impl Optimizer {
 
 /// Common context needed when optimizing function bodies.
 struct OptimizeContext<'a, 'b> {
+    /// Optimization fuel.
+    fuel: Option<u32>,
+
     /// A counter for generating unique identifiers for each function inlining /
     /// copying.
     ///

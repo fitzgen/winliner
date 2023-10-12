@@ -1155,6 +1155,60 @@ fn return_from_inlined_function_nested_blocks() -> Result<()> {
     )
 }
 
+#[test]
+fn fuel() -> Result<()> {
+    assert_optimize(
+        Optimizer::new().min_total_calls(1).fuel(Some(1)),
+        &[&[(42, 1)], &[(42, 1)]],
+        r#"
+(module
+  (type (;0;) (func (result i32)))
+  (type (;1;) (func (param i32) (result i32)))
+  (func (;0;) (type 0) (result i32)
+    i32.const 42
+  )
+  (func (;1;) (type 1) (param i32) (result i32)
+    local.get 0
+    call_indirect (type 0)
+    drop
+    local.get 0
+    call_indirect (type 0)
+  )
+  (table (;0;) 100 100 funcref)
+  (elem (;0;) (i32.const 42) funcref (ref.func 0))
+)
+        "#,
+        r#"
+(module
+  (type (;0;) (func (result i32)))
+  (type (;1;) (func (param i32) (result i32)))
+  (func (;0;) (type 0) (result i32)
+    (local i32)
+    i32.const 42
+  )
+  (func (;1;) (type 1) (param i32) (result i32)
+    (local i32)
+    local.get 0
+    local.tee 1
+    i32.const 42
+    i32.eq
+    if (type 0) (result i32) ;; label = @1
+      i32.const 42
+    else
+      local.get 1
+      call_indirect (type 0)
+    end
+    drop
+    local.get 0
+    call_indirect (type 0)
+  )
+  (table (;0;) 100 100 funcref)
+  (elem (;0;) (i32.const 42) funcref (ref.func 0))
+)
+        "#,
+    )
+}
+
 /// Tests for when we run optimization with bogus profiles.
 ///
 /// The exact behavior doesn't matter too much here (we do document the

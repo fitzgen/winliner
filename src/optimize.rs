@@ -55,7 +55,7 @@ pub struct Optimizer {
     ///
     /// This can help limit code size blowup from duplicating many function
     /// bodies during inlining.
-    #[cfg_attr(feature = "clap", clap(long, default_value = "10"))]
+    #[cfg_attr(feature = "clap", clap(long, default_value = "1"))]
     max_inline_depth: usize,
 
     /// Emit counters for how often our speculative inlining guesses were
@@ -79,7 +79,7 @@ impl Default for Optimizer {
         Optimizer {
             min_total_calls: 1000,
             min_ratio: 0.9,
-            max_inline_depth: 10,
+            max_inline_depth: 1,
             emit_counters: false,
         }
     }

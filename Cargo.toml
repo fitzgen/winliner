@@ -34,8 +34,8 @@ log = "0.4.20"
 serde = { version = "1", optional = true }
 serde_json = { version = "1", optional = true }
 wasi-cap-std-sync = { version = "11.0.1", optional = true }
-wasm-encoder = { version = "0.33.2", features = ["wasmparser"] }
-wasmparser = "0.113.3"
+wasm-encoder = { version = "0.34.1", features = ["wasmparser"] }
+wasmparser = "0.114.0"
 wasmtime = { version = "11.0.1", optional = true }
 wasmtime-wasi = { version = "11.0.1", optional = true }
 
@@ -52,8 +52,3 @@ wat = "1.0.75"
 members = [
   "fuzz",
 ]
-
-[patch.crates-io]
-wasm-encoder = { path = "../wasm-tools/crates/wasm-encoder" }
-wasmparser = { path = "../wasm-tools/crates/wasmparser" }
-wat = { path = "../wasm-tools/crates/wat" }

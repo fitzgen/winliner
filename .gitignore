@@ -2,3 +2,5 @@
 /Cargo.lock
 instrumented*.wasm
 optimized*.wasm
+profile.json
+predicate.sh

@@ -786,24 +786,22 @@ impl Optimizer {
 
         // ... and if that function index is not already on our winlining stack
         // (i.e. we aren't in a recursive inlining chain)...
-        if on_stack.contains(&callee_func_index) {
+        let defined_func_index = callee_func_index
+            .checked_sub(context.num_imported_funcs)
+            .unwrap();
+        if on_stack.contains(&defined_func_index) {
             return Ok(None);
         }
 
         // ... and if that function has the correct type (if this is not true
         // then either the profile is bogus/mismatched or every time the call
         // site was executed it trapped)...
-        if context.funcs[usize::try_from(callee_func_index - context.num_imported_funcs).unwrap()]
-            != type_index
-        {
+        if context.funcs[usize::try_from(defined_func_index).unwrap()] != type_index {
             return Ok(None);
         }
 
         // ... then we can winline this callee and push it onto our stack!
 
-        let defined_func_index = callee_func_index
-            .checked_sub(context.num_imported_funcs)
-            .unwrap();
         let locals_delta = *num_locals;
         let func_body = context.func_bodies[usize::try_from(defined_func_index).unwrap()].clone();
         let ops = func_body

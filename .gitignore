@@ -1,6 +1,6 @@
 /target
 /Cargo.lock
-instrumented*.wasm
-optimized*.wasm
+.cargo/
+*.wasm
 profile.json
 predicate.sh

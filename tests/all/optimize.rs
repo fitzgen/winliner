@@ -591,6 +591,44 @@ fn dont_inline_direct_recursion() -> Result<()> {
 }
 
 #[test]
+fn dont_inline_direct_recursion_with_imports() -> Result<()> {
+    assert_optimize(
+        Optimizer::new().min_total_calls(100),
+        &[&[(1, 100)]],
+        r#"
+(module
+  (type (func (param i32) (result i32)))
+
+  (import "foo" "bar" (func (type 0)))
+
+  (func (type 0)
+    local.get 0
+    local.get 0
+    call_indirect (type 0)
+  )
+
+  (table 100 100 funcref)
+  (elem (i32.const 0) funcref (ref.func 1))
+)
+        "#,
+        r#"
+(module
+  (type (;0;) (func (param i32) (result i32)))
+  (import "foo" "bar" (func (;0;) (type 0)))
+  (func (;1;) (type 0) (param i32) (result i32)
+    (local i32)
+    local.get 0
+    local.get 0
+    call_indirect (type 0)
+  )
+  (table (;0;) 100 100 funcref)
+  (elem (;0;) (i32.const 0) funcref (ref.func 1))
+)
+        "#,
+    )
+}
+
+#[test]
 fn multiple_funcref_tables() -> Result<()> {
     assert_optimize(
         Optimizer::new().min_total_calls(1),
